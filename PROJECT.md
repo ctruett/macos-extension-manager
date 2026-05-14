@@ -1,10 +1,10 @@
-# System Extension Manager - macOS Application Plan
+# System Extension Manager - Project Plan
 
 ## Overview
 
 **Project Name:** System Extension Manager  
-**Bundle Identifier:** com.systemextensionmanager.app  
-**Core Functionality:** A native macOS application that provides a unified graphical interface to manage Login Items, Launch Agents, Launch Daemons, and System Extensions (Background Items).  
+**Type:** Terminal User Interface (TUI) Application  
+**Core Functionality:** A TUI application that provides a unified interface to manage Login Items, Launch Agents, Launch Daemons, and System Extensions.  
 **Target Users:** Power users, system administrators, and developers who need fine-grained control over macOS startup and background services.  
 **macOS Version Support:** macOS 12.0+ (Monterey and later)
 
@@ -15,463 +15,269 @@
 ### 1.1 Core Features
 
 #### 1.1.1 Login Items Management
-- List all user login items (applications and URLs)
-- Add/remove login items
-- Enable/disable individual login items
-- Show login item details (path, name, hidden status)
+- [ ] List all user login items (applications and URLs)
+- [ ] Add/remove login items
+- [ ] Enable/disable individual login items
+- [ ] View login item properties (path, hidden status)
 
 #### 1.1.2 Launch Agents Management
-- List all user-level Launch Agents (`~/Library/LaunchAgents/`)
-- Display agent properties (label, program arguments, run conditions, etc.)
-- Add/edit/remove Launch Agents
-- Enable/disable individual agents via `launchctl`
-- Show agent plist contents
+- [ ] List all user launch agents (`~/Library/LaunchAgents`)
+- [ ] Load/unload agents via `launchctl`
+- [ ] Create/delete agent plist files
+- [ ] View agent properties (label, program, runAtLoad, keepAlive)
 
 #### 1.1.3 Launch Daemons Management
-- List all system-level Launch Daemons (`/Library/LaunchDaemons/`)
-- Requires admin privileges to view/modify
-- Display daemon properties
-- Add/edit/remove Launch Daemons (admin required)
-- Enable/disable individual daemons
-- Show daemon plist contents
+- [ ] List all system launch daemons (`/Library/LaunchDaemons`)
+- [ ] Load/unload daemons (requires admin privileges)
+- [ ] Create/delete daemon plist files
+- [ ] Admin authentication via AppleScript dialog
 
-#### 1.1.4 System Extensions (Background Items) Management
-- List installed system extensions via `SMExtensionManager`
-- Enable/disable system extensions
-- Show extension details (bundle ID, version, type)
-- Note: Approving extensions requires System Preferences interaction
+#### 1.1.4 System Extensions Management
+- [ ] List installed system extensions
+- [ ] Activate/deactivate extensions (requires admin privileges)
+- [ ] View extension properties (identifier, version, type)
+- [ ] Status indicators (activated, deactivated, pending)
 
-### 1.2 Secondary Features
+### 1.2 TUI Features
 
-- Search and filter across all item types
-- Detailed inspector view for each item
-- Import/export configurations
-- Quick actions: Open file location, Reveal in Finder
-- Status indicators (enabled/disabled/loaded/unloaded)
-- Refresh capability
-- Help tooltips for each section
+#### 1.2.1 Navigation
+- [ ] Sidebar with section icons
+- [ ] Keyboard navigation (vim-style: j/k/h/l, arrow keys)
+- [ ] Mouse support (click to select, scroll)
+- [ ] Tab switching between sections
+
+#### 1.2.2 List Views
+- [ ] Sortable columns
+- [ ] Search/filter functionality
+- [ ] Status badges (enabled/disabled, loaded/unloaded)
+- [ ] Pagination for large lists
+
+#### 1.2.3 Detail Views
+- [ ] Selected item details panel
+- [ ] Plist content viewer/editor
+- [ ] Action buttons (enable, disable, delete, etc.)
+
+#### 1.2.4 Visual States
+- [ ] Loading spinner
+- [ ] Empty state messages
+- [ ] Error banners with recovery actions
+- [ ] Confirmation dialogs for destructive actions
 
 ---
 
-## 2. Technical Architecture
+## 2. Technical Approach
 
-### 2.1 Technology Stack
+### 2.1 Tech Stack
 
 | Component | Technology |
 |-----------|------------|
-| UI Framework | SwiftUI (primary) with AppKit integration |
-| Architecture | MVVM (Model-View-ViewModel) |
-| Build System | Swift Package Manager (SPM) |
-| Minimum macOS | 12.0 |
-| Swift Version | 5.9+ |
+| Language | Rust 1.70+ |
+| TUI Framework | ratatui |
+| Terminal I/O | crossterm |
+| CLI Parsing | clap |
+| Data Parsing | plist, serde |
+| Error Handling | anyhow, thiserror |
+| Logging | tracing |
 
-### 2.2 Project Structure
+### 2.2 Architecture
 
 ```
-SystemExtensionManager/
-├── Sources/
-│   ├── App/
-│   │   ├── main.swift                    # Application entry point
-│   │   ├── AppDelegate.swift             # NSApplication delegate
-│   │   └── SystemExtensionManagerApp.swift
-│   ├── Models/
-│   │   ├── LoginItem.swift
-│   │   ├── LaunchAgent.swift
-│   │   ├── LaunchDaemon.swift
-│   │   ├── SystemExtension.swift
-│   │   └── ItemType.swift
-│   ├── ViewModels/
-│   │   ├── LoginItemsViewModel.swift
-│   │   ├── LaunchAgentsViewModel.swift
-│   │   ├── LaunchDaemonsViewModel.swift
-│   │   ├── SystemExtensionsViewModel.swift
-│   │   └── MainViewModel.swift
-│   ├── Views/
-│   │   ├── MainWindow/
-│   │   │   ├── MainView.swift
-│   │   │   └── SidebarView.swift
-│   │   ├── LoginItems/
-│   │   │   ├── LoginItemsView.swift
-│   │   │   └── LoginItemRow.swift
-│   │   ├── LaunchAgents/
-│   │   │   ├── LaunchAgentsView.swift
-│   │   │   └── LaunchAgentRow.swift
-│   │   ├── LaunchDaemons/
-│   │   │   ├── LaunchDaemonsView.swift
-│   │   │   └── LaunchDaemonRow.swift
-│   │   ├── SystemExtensions/
-│   │   │   ├── SystemExtensionsView.swift
-│   │   │   └── SystemExtensionRow.swift
-│   │   ├── Detail/
-│   │   │   ├── DetailView.swift
-│   │   │   ├── PlistEditorView.swift
-│   │   │   └── InspectorView.swift
-│   │   └── Components/
-│   │       ├── StatusBadge.swift
-│   │       ├── SearchBar.swift
-│   │       ├── ActionButton.swift
-│   │       └── RefreshButton.swift
-│   ├── Services/
-│   │   ├── LoginItemsService.swift
-│   │   ├── LaunchAgentsService.swift
-│   │   ├── LaunchDaemonsService.swift
-│   │   ├── SystemExtensionsService.swift
-│   │   └── PrivilegeService.swift
-│   ├── Utilities/
-│   │   ├── PlistParser.swift
-│   │   ├── ShellExecutor.swift
-│   │   └── FileManager+Extensions.swift
-│   └── Resources/
-│       ├── Assets.xcassets/
-│       └── Localizable.strings
-├── project.yml                             # XcodeGen configuration
-├── Package.swift                           # SPM manifest (if needed)
-└── Info.plist
+┌─────────────────────────────────────┐
+│           TUI Application            │
+├─────────────────────────────────────┤
+│  State Management (AppState)         │
+├──────────────┬──────────────────────┤
+│  Services    │   Views (ratatui)    │
+│              │                      │
+│  - Login     │  - Sidebar           │
+│  - Agents    │  - List views        │
+│  - Daemons   │  - Detail panel      │
+│  - SysExts   │  - Modals            │
+└──────────────┴──────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│      Shell Commands (launchctl)       │
+│      macOS APIs (SystemExtensions)   │
+└─────────────────────────────────────┘
+```
+
+### 2.3 Data Models
+
+```rust
+enum ItemType {
+    LoginItem,
+    LaunchAgent,
+    LaunchDaemon,
+    SystemExtension,
+}
+
+struct LoginItem {
+    id: String,
+    name: String,
+    path: PathBuf,
+    enabled: bool,
+}
+
+struct LaunchAgent {
+    label: String,
+    path: PathBuf,
+    program: PathBuf,
+    run_at_load: bool,
+    keep_alive: bool,
+    loaded: bool,
+}
+
+struct LaunchDaemon {
+    // Similar to LaunchAgent
+}
+
+struct SystemExtension {
+    identifier: String,
+    version: String,
+    activated: bool,
+}
+```
+
+### 2.4 Services Layer
+
+Each service module handles:
+- Listing items from the filesystem and via shell commands
+- CRUD operations via shell (`launchctl`, `systemextensionsctl`)
+- Admin privilege escalation when needed
+- Error handling with typed errors
+
+---
+
+## 3. File Structure
+
+```
+system-extension-manager/
+├── Cargo.toml
+├── src/
+│   ├── main.rs
+│   ├── lib.rs
+│   ├── app.rs
+│   ├── error.rs
+│   ├── models/
+│   │   ├── mod.rs
+│   │   ├── item_type.rs
+│   │   ├── login_item.rs
+│   │   ├── launch_agent.rs
+│   │   ├── launch_daemon.rs
+│   │   └── system_extension.rs
+│   ├── services/
+│   │   ├── mod.rs
+│   │   ├── login_items_service.rs
+│   │   ├── launch_agents_service.rs
+│   │   ├── launch_daemons_service.rs
+│   │   ├── system_extensions_service.rs
+│   │   └── privilege_service.rs
+│   ├── state/
+│   │   ├── mod.rs
+│   │   └── app_state.rs
+│   └── ui/
+│       ├── mod.rs
+│       ├── app.rs
+│       ├── layouts/
+│       │   ├── mod.rs
+│       │   ├── sidebar.rs
+│       │   ├── split_view.rs
+│       │   └── list_view.rs
+│       ├── views/
+│       │   ├── mod.rs
+│       │   ├── login_items_view.rs
+│       │   ├── launch_agents_view.rs
+│       │   ├── launch_daemons_view.rs
+│       │   ├── system_extensions_view.rs
+│       │   └── detail_view.rs
+│       └── components/
+│           ├── mod.rs
+│           ├── status_badge.rs
+│           ├── search_bar.rs
+│           ├── table_view.rs
+│           └── loading_spinner.rs
+├── BUILD.md
+├── README.md
+└── LICENSE
 ```
 
 ---
 
-## 3. UI/UX Design
+## 4. Keyboard Shortcuts
 
-### 3.1 Window Structure
-
-- **Main Window:** Single-window application with sidebar navigation
-  - Minimum size: 900x600
-  - Default size: 1100x700
-  - Supports window resizing
-  
-- **Navigation:** NSSidebar-style sidebar (SwiftUI `NavigationSplitView`)
-  - Collapsible
-  - Icons + labels for each section
-
-### 3.2 Visual Design
-
-| Element | Specification |
-|---------|---------------|
-| Window Style | Unified title bar, automatic hide toolbar |
-| Color Scheme | System appearance (light/dark mode support) |
-| Typography | SF Pro (system font): Title 22pt, Heading 17pt, Body 13pt |
-| Spacing | 8pt grid system |
-| Sidebar Width | 200pt minimum, 280pt default |
-
-### 3.3 Color Palette
-
-| Purpose | Light Mode | Dark Mode |
-|---------|------------|-----------|
-| Primary | System Blue (#007AFF) | System Blue |
-| Secondary | System Gray (#8E8E93) | System Gray |
-| Success/Enabled | System Green (#34C759) | System Green |
-| Warning | System Orange (#FF9500) | System Orange |
-| Error/Disabled | System Red (#FF3B30) | System Red |
-| Background | System Background | System Background |
-
-### 3.4 Icons
-
-| Section | SF Symbol |
-|---------|-----------|
-| Login Items | `person.crop.circle.badge.plus` |
-| Launch Agents | `doc.badge.gearshape` |
-| Launch Daemons | `gearshape.2` |
-| System Extensions | `puzzlepiece.extension` |
-| General | `house.fill` |
-
-### 3.5 View States
-
-| State | Visual Treatment |
-|-------|------------------|
-| Loading | ProgressView spinner centered |
-| Empty | SF Symbol + descriptive message |
-| Error | Alert or inline error message |
-| Populated | List with rows |
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Move selection up |
+| `↓` / `j` | Move selection down |
+| `←` / `h` | Navigate to sidebar |
+| `→` / `l` | Navigate to detail |
+| `Enter` / `Space` | Select / Toggle item |
+| `r` | Refresh current list |
+| `/` | Focus search |
+| `Esc` | Clear search / Go back |
+| `q` | Quit application |
+| `?` | Show help |
 
 ---
 
-## 4. Functionality Specification
-
-### 4.1 User Flows
-
-#### 4.1.1 View Login Items
-1. User clicks "Login Items" in sidebar
-2. App fetches login items via LSSharedFileList or SMLoginItemSetEnabled
-3. Display items in table view with status badges
-4. User can select item to see details
-
-#### 4.1.2 Toggle Login Item
-1. User selects login item row
-2. User clicks toggle or right-click > Enable/Disable
-3. App updates login item state
-4. UI reflects new state
-
-#### 4.1.3 Add Launch Agent
-1. User clicks "+" button in Launch Agents view
-2. File picker opens for .plist selection
-3. App validates plist format
-4. App copies file to ~/Library/LaunchAgents/
-5. App loads agent via launchctl
-6. List refreshes to show new agent
-
-#### 4.1.4 Remove System Extension
-1. User selects system extension
-2. User clicks "-" or right-click > Remove
-3. Confirmation dialog appears
-4. App calls SMExtensionManager to deactivate
-5. UI updates
-
-### 4.2 Architecture Pattern (MVVM)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                          Views                               │
-│  (SwiftUI Views - LoginItemsView, LaunchAgentsView, etc.)  │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ @ObservedObject / @StateObject
-┌─────────────────────────▼───────────────────────────────────┐
-│                      ViewModels                              │
-│  (LoginItemsViewModel, LaunchAgentsViewModel, etc.)        │
-│  - @Published properties for UI binding                     │
-│  - Actions triggered by user                               │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ calls
-┌─────────────────────────▼───────────────────────────────────┐
-│                       Services                               │
-│  (LoginItemsService, LaunchAgentsService, etc.)             │
-│  - Business logic                                           │
-│  - Shell command execution                                  │
-│  - Data transformation                                      │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ uses
-┌─────────────────────────▼───────────────────────────────────┐
-│                        Models                                │
-│  (LoginItem, LaunchAgent, LaunchDaemon, etc.)              │
-│  - Data structures                                          │
-│  - Codable for plist parsing                                │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 4.3 Error Handling
+## 5. Error Handling
 
 | Error Type | User Feedback |
 |------------|---------------|
-| Permission Denied | Alert with "Grant Permission" button, opens System Preferences |
-| File Not Found | Inline message, option to remove from list |
-| Invalid Plist | Alert with parse error details |
-| Extension Activation Failed | Alert with error code and suggestion |
-| Launchctl Failure | Inline error with stderr output |
-
-### 4.4 Security Considerations
-
-- Launch Daemon modification requires admin via AuthorizationServices
-- System Extension management requires System Extensions entitlement
-- Sensitive operations logged (without sensitive data)
-- No hardcoded credentials
+| Permission Denied | "Admin privileges required" + prompt to authenticate |
+| File Not Found | Inline error + option to remove from list |
+| Invalid Plist | Error view with parse error details |
+| Extension Activation Failed | Error with code and suggestion |
+| launchctl Failure | Inline error with stderr output |
 
 ---
 
-## 5. Implementation Details
+## 6. Implementation Priority
 
-### 5.1 Login Items
+### Phase 1: Foundation
+1. Project setup (Cargo.toml, build config)
+2. Error types
+3. Data models
+4. Shell command utilities
 
-**API:** `LSSharedFileList` (deprecated but functional) or `SMLoginItemSetEnabled` via ServiceManagement framework
+### Phase 2: Core Services
+1. LoginItemsService
+2. LaunchAgentsService
+3. LaunchDaemonsService
+4. SystemExtensionsService
 
-```swift
-// Key APIs
-LSSharedFileListCreate(nil, kLSSharedFileListSessionLoginItems, nil)
-LSSharedFileListItemResolve(item, kLSSharedFileListDoNotMountVolumes, ...)
-ServiceManagement.SMLoginItemSetEnabled(bundleID, enabled)
-```
+### Phase 3: State Management
+1. AppState struct
+2. State transitions
+3. Loading/error states
 
-### 5.2 Launch Agents/Daemons
+### Phase 4: TUI Views
+1. Main app loop
+2. Layout components
+3. Section list views
+4. Detail views
+5. Search and filtering
 
-**Location:**
-- Agents: `~/Library/LaunchAgents/`
-- Daemons: `/Library/LaunchDaemons/`
-
-**Tools:**
-- `launchctl list` - List loaded agents/daemons
-- `launchctl load / unload` - Load/unload agents
-- `launchctl remove` - Remove agents
-
-**Plist Format:**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "...">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.example.agent</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/bin/python3</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>
-```
-
-### 5.3 System Extensions
-
-**Framework:** `SystemExtensions` framework (OSSystemExtensionRequest)
-
-```swift
-import SystemExtensions
-
-// Key classes
-OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier:)
-OSSystemExtensionRequest.deactivationRequest(forExtensionWithIdentifier:)
-OSSExtensionHubDelegate
-```
-
-**Entitlements Required:**
-```xml
-<key>com.apple.developer.system-extension.install</key>
-<true/>
-```
-
-### 5.4 Dependencies
-
-| Dependency | Purpose | Manager |
-|------------|---------|---------|
-| PlistParser (custom) | Parse/write plist files | Bundled |
-| ShellExecutor (custom) | Execute launchctl commands | Bundled |
-
-*Note: Minimize external dependencies. Use native frameworks.*
-
-### 5.5 Entitlements
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "...">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.app-sandbox</key>
-    <false/>
-    <key>com.apple.developer.system-extension.install</key>
-    <true/>
-    <key>com.apple.developer.system-extension.install</key>
-    <true/>
-    <key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
-    <array>
-        <string>/Library/LaunchDaemons/</string>
-        <string>/Library/LaunchAgents/</string>
-    </array>
-</dict>
-</plist>
-```
+### Phase 5: Polish
+1. Keyboard navigation
+2. Loading states
+3. Error handling UI
+4. Help/shortcuts overlay
 
 ---
 
-## 6. Testing Strategy
+## 7. Testing Strategy
 
-### 6.1 Unit Tests
-- PlistParser accuracy
-- Model initialization
-- ViewModel state changes
-- Service method mocking
-
-### 6.2 Integration Tests
-- File system operations (create/remove agents)
-- launchctl command execution
-- Login item API integration (requires signed app)
-
-### 6.3 UI Tests
-- Navigation flow
-- List population
-- Error state display
+- Unit tests for models and services
+- Integration tests for shell command execution
+- Manual testing for TUI interactions
 
 ---
 
-## 7. Build & Distribution
+## 8. Future Considerations
 
-### 7.1 Signing Requirements
-
-- Apple Developer account required
-- System Extension entitlement (requires paid membership)
-- Hardened Runtime enabled
-- Notarization required for distribution
-
-### 7.2 Distribution Options
-
-| Method | Description |
-|--------|-------------|
-| Direct Distribution | DMG with notarized app |
-| Homebrew Cask | For power users |
-| App Store | Not recommended (System Extensions have restrictions) |
-
----
-
-## 8. Phases & Milestones
-
-### Phase 1: Foundation (Week 1-2)
-- [ ] Project setup with XcodeGen
-- [ ] Basic window structure
-- [ ] Sidebar navigation
-- [ ] Models and basic ViewModels
-
-### Phase 2: Login Items (Week 2-3)
-- [ ] LoginItemsService implementation
-- [ ] LoginItemsView and rows
-- [ ] Enable/disable functionality
-- [ ] Search/filter
-
-### Phase 3: Launch Agents (Week 3-4)
-- [ ] LaunchAgentsService implementation
-- [ ] LaunchAgentsView and rows
-- [ ] Add/remove agents
-- [ ] Load/unload via launchctl
-
-### Phase 4: Launch Daemons (Week 4-5)
-- [ ] LaunchDaemonsService with admin privileges
-- [ ] LaunchDaemonsView and rows
-- [ ] Add/remove daemons
-- [ ] Authorization UI
-
-### Phase 5: System Extensions (Week 5-6)
-- [ ] SystemExtensionsService implementation
-- [ ] SystemExtensionsView and rows
-- [ ] Activation/deactivation requests
-- [ ] Error handling for extension operations
-
-### Phase 6: Polish (Week 6-7)
-- [ ] Inspector/detail views
-- [ ] Plist editor view
-- [ ] Error handling refinement
-- [ ] UI polish and animations
-
-### Phase 7: Testing & Release (Week 7-8)
-- [ ] Unit and integration tests
-- [ ] Build configuration
-- [ ] Code signing setup
-- [ ] Documentation
-
----
-
-## 9. Potential Challenges
-
-| Challenge | Mitigation |
-|-----------|------------|
-| System Extension entitlement approval | Start enrollment early, Apple Developer Program required |
-| Admin privilege escalation | Use SMJobBless or AuthorizationServices properly |
-| Deprecated APIs (LSSharedFileList) | Graceful fallback, document limitations |
-| App Sandbox restrictions | Disable sandbox or request specific exceptions |
-| launchctl permission issues | Clear user communication, guide to System Preferences |
-
----
-
-## 10. Future Enhancements
-
-- [ ] Cron jobs management
-- [ ] Startup items history
-- [ ] Scheduled task management
-- [ ] Cloud configuration sync
-- [ ] Profiles/mobile device management support
-
----
-
-## 11. References
-
-- [ServiceManagement Framework](https://developer.apple.com/documentation/servicemanagement)
-- [System Extensions Framework](https://developer.apple.com/documentation/systemextensions)
-- [Launch Agents Documentation](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPLaunchServices/Articles/LaunchAgents.html)
-- [LSSharedFileList Reference](https://developer.apple.com/library/archive/documentation/CoreFoundation/Reference/LSSharedFileListRef/)
-- [XcodeGen Documentation](https://github.com/yonaskolb/XcodeGen)
+- Configuration file for custom launch agent locations
+- Batch operations (enable/disable multiple items)
+- Export/import configurations
+- macOS Notifications for extension status changes
