@@ -13,3 +13,9 @@
 
 # Lock file (optional, for reproducibility)
 # Cargo.lock
+
+# Local planning docs
+AGENTS.md
+BUILD.md
+PROGRESS.md
+PROJECT.md
