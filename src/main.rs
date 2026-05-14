@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let log_file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("/tmp/system-extension-manager.log")
+        .open("/tmp/extman.log")
         .ok();
     if let Some(file) = log_file {
         tracing_subscriber::registry()

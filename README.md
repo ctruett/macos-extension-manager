@@ -13,6 +13,7 @@ macOS System Manager gives you a unified view of everything that runs at login o
 | Type | Source |
 |---|---|
 | Login Items | Items registered to launch at login |
+| Open at Login | Apps set to open at login (System Settings → General → Login Items) |
 | Launch Agents | User-level background services (`~/Library/LaunchAgents`) |
 | Launch Daemons | System-level background services (`/Library/LaunchDaemons`) |
 | System Extensions | Kernel/network/endpoint extensions |
@@ -28,7 +29,7 @@ macOS System Manager gives you a unified view of everything that runs at login o
 
 ```bash
 cargo build --release
-./target/release/system-extension-manager
+./target/release/extman
 ```
 
 Or run directly:
@@ -57,7 +58,7 @@ cargo run
 | `G` | Jump to bottom |
 | `E` | Enable selected item |
 | `D` | Disable selected item |
-| `O` | Open item location in Finder |
+| `O` | Open item location in Finder (Open at Login items open the Login Items panel) |
 | `C` | Copy identifier to clipboard |
 | `^D` | Delete selected item (confirm with second `^D`) |
 | `R` | Refresh all items |
@@ -69,4 +70,4 @@ cargo run
 - **System Extensions** cannot be deleted from the CLI — use System Settings → General → Login Items & Extensions.
 - **Background Items** are managed via `launchctl` in the user domain and require no elevated privileges.
 - Deleting a Launch Daemon or system-level Launch Agent will prompt for administrator credentials via macOS's standard auth dialog.
-- Logs are written to `/tmp/system-extension-manager.log`.
+- Logs are written to `/tmp/extman.log`.
