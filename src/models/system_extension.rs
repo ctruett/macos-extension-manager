@@ -64,6 +64,9 @@ pub struct SystemExtension {
     /// Bundle identifier
     pub identifier: String,
 
+    /// Display name
+    pub name: Option<String>,
+
     /// Extension version
     pub version: String,
 
@@ -82,6 +85,7 @@ impl SystemExtension {
     pub fn new(identifier: String) -> Self {
         Self {
             identifier,
+            name: None,
             version: String::new(),
             extension_types: Vec::new(),
             status: ExtensionStatus::Unknown,
@@ -97,10 +101,11 @@ impl SystemExtension {
 
 impl std::fmt::Display for SystemExtension {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let display_name = self.name.as_deref().unwrap_or(&self.identifier);
         write!(
             f,
             "{} v{} [{}]",
-            self.identifier,
+            display_name,
             self.version,
             self.status
         )

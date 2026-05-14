@@ -29,12 +29,40 @@ impl SystemExtensionsService {
     fn parse_extensions_output(output: &str) -> Vec<SystemExtension> {
         let mut extensions = Vec::new();
 
+        // Skip header lines and category headers
+        let mut in_extension = false;
+
         for line in output.lines() {
-            // Format: identifier [type] (version) [status]
-            // Example: com.example.extension [driver extension] (1.0.0) [activated]
-            if let Some(ext) = Self::parse_extension_line(line) {
-                debug!("Found system extension: {}", ext.identifier);
-                extensions.push(ext);
+            let line = line.trim();
+            
+            // Skip empty lines
+            if line.is_empty() {
+                continue;
+            }
+            
+            // Skip category headers like "5 extension(s)" and "--- com.apple.system_extension.xxx"
+            if line.starts_with("---") || line.starts_with("There are") || line.starts_with("enabled") || line.starts_with("*") {
+                if line.starts_with("enabled") || line.starts_with("*") {
+                    // This is a data line
+                    if let Some(ext) = Self::parse_extension_line(line) {
+                        debug!("Found system extension: {}", ext.identifier);
+                        extensions.push(ext);
+                    }
+                }
+                continue;
+            }
+            
+            // Skip lines with instructions
+            if line.starts_with("Go to 'System Settings") {
+                continue;
+            }
+
+            // Check if it's a data line (starts with * or is tab-separated)
+            if line.starts_with('*') || line.contains('\t') {
+                if let Some(ext) = Self::parse_extension_line(line) {
+                    debug!("Found system extension: {}", ext.identifier);
+                    extensions.push(ext);
+                }
             }
         }
 
@@ -42,63 +70,83 @@ impl SystemExtensionsService {
     }
 
     /// Parse a single line of systemextensionsctl output
+    /// Format: *	*	teamID	bundleID (version)	name	[state]
     fn parse_extension_line(line: &str) -> Option<SystemExtension> {
         let line = line.trim();
-        if line.is_empty() || line.starts_with("system extension") || line.starts_with("There are") {
+        if line.is_empty() {
             return None;
         }
 
-        // Simple parsing - look for identifier pattern (com.domain.name)
-        let identifier = if let Some(start) = line.find("com.") {
-            line[start..]
-                .split_whitespace()
-                .next()
-                .unwrap_or(line)
-                .trim_end_matches(')')
-                .to_string()
-        } else {
+        // Split by tabs
+        let parts: Vec<&str> = line.split('\t').collect();
+        
+        // Need at least: enabled, active, teamID, bundleID (version), name, [state]
+        if parts.len() < 6 {
             return None;
-        };
-
-        let mut ext = SystemExtension::new(identifier);
-
-        // Parse status
-        if line.contains("[activated]") || line.contains("activated") {
-            ext.status = ExtensionStatus::Activated;
-        } else if line.contains("[deactivated]") || line.contains("deactivated") {
-            ext.status = ExtensionStatus::Deactivated;
-        } else if line.contains("[pending]") || line.contains("pending") {
-            ext.status = ExtensionStatus::Pending;
-        } else if line.contains("[failed]") || line.contains("failed") {
-            ext.status = ExtensionStatus::Failed;
         }
 
-        // Parse version (parenthesis content)
-        if let Some(start) = line.find('(') {
-            if let Some(end) = line[start..].find(')') {
-                ext.version = line[start + 1..start + end].to_string();
-            }
-        }
+        // Extract bundle ID and version from "bundleID (version)" format
+        let bundle_version = parts.get(3)?; // e.g., "org.pqrs.Karabiner-DriverKit-VirtualHIDDevice (1.8.0/1.8.0)"
+        let (bundle_id, version) = Self::parse_bundle_version(bundle_version)?;
+        
+        // Extract name from parts[4]
+        let name = parts.get(4)?.trim().to_string();
+        
+        // Extract state from parts[5] e.g., "[activated enabled]"
+        let state = parts.get(5)?;
+        let (status, _active_state) = Self::parse_state(state)?;
 
-        // Parse extension type
-        if line.contains("driver extension") || line.contains("Driver") {
-            ext.extension_types.push(ExtensionType::Driver);
-        }
-        if line.contains("network extension") || line.contains("Network") {
-            ext.extension_types.push(ExtensionType::Network);
-        }
-        if line.contains("endpoint security extension") || line.contains("Endpoint") {
-            ext.extension_types.push(ExtensionType::EndpointSecurity);
-        }
-        if line.contains("app extension") || line.contains("App") {
-            ext.extension_types.push(ExtensionType::AppExtension);
-        }
-
-        if ext.extension_types.is_empty() {
-            ext.extension_types.push(ExtensionType::AppExtension); // Default
-        }
+        // Determine extension type from bundle ID or name
+        let ext_type = Self::infer_extension_type(&bundle_id, &name);
+        
+        let mut ext = SystemExtension::new(bundle_id);
+        ext.version = version;
+        ext.status = status;
+        ext.extension_types = vec![ext_type];
+        ext.name = Some(name);
 
         Some(ext)
+    }
+
+    /// Parse "bundleID (version)" into parts
+    fn parse_bundle_version(s: &str) -> Option<(String, String)> {
+        // Format: "org.pqrs.Karabiner (1.0.0/1.0.0)" or "org.pqrs.Karabiner (1.0.0)"
+        let (bundle_id, version_part) = s.rsplit_once('(')?;
+        let version = version_part.trim_end_matches(')').to_string();
+        Some((bundle_id.trim().to_string(), version))
+    }
+
+    /// Parse state like "[activated enabled]" or "[deactivated waiting for user]"
+    fn parse_state(state: &str) -> Option<(ExtensionStatus, String)> {
+        let state = state.trim();
+        let state = state.trim_start_matches('[').trim_end_matches(']');
+        
+        let parts: Vec<&str> = state.split_whitespace().collect();
+        
+        let status = match parts.first() {
+            Some(&"activated") => ExtensionStatus::Activated,
+            Some(&"deactivated") => ExtensionStatus::Deactivated,
+            Some(&"pending") => ExtensionStatus::Pending,
+            Some(&"failed") => ExtensionStatus::Failed,
+            _ => ExtensionStatus::Unknown,
+        };
+        
+        let detail = parts.get(1..).map(|p| p.join(" ")).unwrap_or_default();
+        
+        Some((status, detail))
+    }
+
+    /// Infer extension type from bundle ID or name
+    fn infer_extension_type(bundle_id: &str, _name: &str) -> ExtensionType {
+        if bundle_id.contains("networkextension") || _name.to_lowercase().contains("network") {
+            ExtensionType::Network
+        } else if bundle_id.contains("driver") || _name.to_lowercase().contains("driver") {
+            ExtensionType::Driver
+        } else if bundle_id.contains("endpoint") || _name.to_lowercase().contains("endpoint") {
+            ExtensionType::EndpointSecurity
+        } else {
+            ExtensionType::AppExtension
+        }
     }
 
     /// Activate a system extension (requires admin)

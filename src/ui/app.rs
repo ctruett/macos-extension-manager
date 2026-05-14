@@ -215,12 +215,14 @@ impl TuiApp {
 
         // System Extensions
         for ext in &self.state.system_extensions {
+            let display_name = ext.name.as_deref().unwrap_or(&ext.identifier);
+            let ext_type = ext.extension_types.first().map(|t| t.to_string()).unwrap_or_else(|| "Extension".to_string());
             items.push(UnifiedItem {
                 item_type: ItemType::SystemExtension,
-                name: ext.identifier.clone(),
+                name: display_name.to_string(),
                 identifier: ext.identifier.clone(),
                 status: ext.status.to_string().to_lowercase(),
-                detail: format!("v{}", ext.version),
+                detail: format!("{} v{}", ext_type, ext.version),
             });
         }
 
