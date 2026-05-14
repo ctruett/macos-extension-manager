@@ -83,10 +83,10 @@ fn run_app<B: ratatui::backend::Backend>(
                 let key_str = match key.code {
                     KeyCode::Char(c) => {
                         if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
-                            if c == 'c' || c == 'C' {
-                                "ctrl-c".to_string()
-                            } else {
-                                continue;
+                            match c {
+                                'c' | 'C' => "ctrl-c".to_string(),
+                                'x' | 'X' => "ctrl-x".to_string(),
+                                _ => continue,
                             }
                         } else {
                             c.to_string()

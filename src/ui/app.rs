@@ -3,14 +3,15 @@
 use crate::error::AppError;
 use crate::models::ItemType;
 use crate::services::{
-    LaunchAgentsService, LaunchDaemonsService, LoginItemsService, SystemExtensionsService,
+    BackgroundItemsService, LaunchAgentsService, LaunchDaemonsService, LoginItemsService,
+    SystemExtensionsService,
 };
-use crate::state::{AppState, LoadingState, SelectedSection};
+use crate::state::{AppState, LoadingState, SelectedSection, ScopeFilter};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Cell, Padding, Paragraph, Row, Table},
+    widgets::{Block, Borders, Cell, Clear, Padding, Paragraph, Row, Table, Wrap},
     Frame,
 };
 
@@ -39,6 +40,7 @@ impl TuiApp {
     /// Load data for all sections
     pub fn load_data(&mut self) {
         self.error_message = None;
+        self.state.refreshing = true;
 
         // Load login items
         self.state.login_items_loading = LoadingState::Loading;
@@ -88,7 +90,21 @@ impl TuiApp {
                 self.state.system_extensions_loading = LoadingState::Error(e.to_string());
             }
         }
-        
+
+        // Load background items
+        self.state.background_items_loading = LoadingState::Loading;
+        match BackgroundItemsService::list() {
+            Ok(items) => {
+                self.state.background_items = items;
+                self.state.background_items_loading = LoadingState::Loaded;
+            }
+            Err(e) => {
+                self.state.background_items_loading = LoadingState::Error(e.to_string());
+            }
+        }
+
+        self.state.refreshing = false;
+
         // Reset scroll and clamp selection against the visible (filtered) list
         self.state.scroll_offset = 0;
         let total = self.get_filtered_items().len();
@@ -161,6 +177,17 @@ impl TuiApp {
                     "System extensions cannot be managed via CLI. Use System Settings → General → Login Items & Extensions.".to_string()
                 )))
             }
+            ItemType::BackgroundItem => {
+                self.state.background_items.iter()
+                    .find(|b| b.identifier == identifier)
+                    .map(|b| {
+                        if enable {
+                            BackgroundItemsService::enable(b)
+                        } else {
+                            BackgroundItemsService::disable(b)
+                        }
+                    })
+            }
         };
 
         match result {
@@ -170,22 +197,33 @@ impl TuiApp {
         }
     }
 
+    fn is_user_path(path: &std::path::Path) -> bool {
+        let home = std::env::var("HOME").unwrap_or_default();
+        !home.is_empty() && path.starts_with(&home)
+    }
+
     /// Get all items combined into a unified list
     fn get_all_items(&self) -> Vec<UnifiedItem> {
         let mut items = Vec::new();
-
         let sys = self.state.show_system_names;
 
         // Login Items
         if self.state.show_login_items {
             for item in &self.state.login_items {
+                let scope = if item.plist_path.as_ref().map(|p| Self::is_user_path(p)).unwrap_or(false)
+                    || Self::is_user_path(&item.path)
+                {
+                    "User"
+                } else {
+                    "System"
+                };
                 items.push(UnifiedItem {
                     item_type: ItemType::LoginItem,
                     name: if sys { item.id.clone() } else { item.name.clone() },
                     identifier: item.id.clone(),
                     status: if item.enabled { "enabled" } else { "disabled" }.to_string(),
                     is_enabled: item.enabled,
-                    disabled_count: None,
+                    scope,
                 });
             }
         }
@@ -193,18 +231,19 @@ impl TuiApp {
         // Launch Agents
         if self.state.show_launch_agents {
             for agent in &self.state.launch_agents {
+                let scope = if Self::is_user_path(&agent.plist_path) { "User" } else { "System" };
                 items.push(UnifiedItem {
                     item_type: ItemType::LaunchAgent,
                     name: if sys { agent.label.clone() } else { agent.bundle_name() },
                     identifier: agent.label.clone(),
                     status: if agent.loaded { "loaded" } else { "unloaded" }.to_string(),
                     is_enabled: agent.loaded,
-                    disabled_count: None,
+                    scope,
                 });
             }
         }
 
-        // Launch Daemons
+        // Launch Daemons (always system)
         if self.state.show_launch_daemons {
             for daemon in &self.state.launch_daemons {
                 items.push(UnifiedItem {
@@ -213,12 +252,12 @@ impl TuiApp {
                     identifier: daemon.label.clone(),
                     status: if daemon.loaded { "loaded" } else { "unloaded" }.to_string(),
                     is_enabled: daemon.loaded,
-                    disabled_count: None,
+                    scope: "System",
                 });
             }
         }
 
-        // System Extensions
+        // System Extensions (always system)
         if self.state.show_system_extensions {
             for ext in &self.state.system_extensions {
                 let name = if sys {
@@ -232,15 +271,31 @@ impl TuiApp {
                     identifier: ext.identifier.clone(),
                     status: ext.status.to_string().to_lowercase(),
                     is_enabled: ext.is_activated(),
-                    disabled_count: None,
+                    scope: "System",
                 });
             }
+        }
+
+        // Background Items (always user) — only show enabled/active items;
+        // disabled items are effectively gone from the user's perspective
+        for bg in &self.state.background_items {
+            if !bg.is_active() {
+                continue;
+            }
+            let name = if sys { bg.identifier.clone() } else { bg.display_name().to_string() };
+            items.push(UnifiedItem {
+                item_type: ItemType::BackgroundItem,
+                name,
+                identifier: bg.identifier.clone(),
+                status: bg.status_str().to_string(),
+                is_enabled: true,
+                scope: "User",
+            });
         }
 
         items
     }
 
-    /// Get filtered and sorted items, with disabled items collapsed into summary rows when hidden
     fn get_filtered_items(&self) -> Vec<UnifiedItem> {
         fn type_rank(t: ItemType) -> u8 {
             match t {
@@ -248,10 +303,12 @@ impl TuiApp {
                 ItemType::LaunchAgent => 1,
                 ItemType::LaunchDaemon => 2,
                 ItemType::SystemExtension => 3,
+                ItemType::BackgroundItem => 4,
             }
         }
 
         let query = self.state.search_query.to_lowercase();
+        let scope_filter = self.state.scope_filter;
         let mut items: Vec<UnifiedItem> = self.get_all_items()
             .into_iter()
             .filter(|item| {
@@ -259,6 +316,11 @@ impl TuiApp {
                     || item.name.to_lowercase().contains(&query)
                     || item.identifier.to_lowercase().contains(&query)
                     || item.item_type.display_name().to_lowercase().contains(&query)
+            })
+            .filter(|item| match scope_filter {
+                ScopeFilter::All => true,
+                ScopeFilter::User => item.scope == "User",
+                ScopeFilter::System => item.scope == "System",
             })
             .collect();
 
@@ -268,45 +330,7 @@ impl TuiApp {
                 .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
         });
 
-        if !self.state.hide_disabled {
-            return items;
-        }
-
-        // Per-type: show enabled items, then either individual disabled or a summary row
-        let mut result = Vec::new();
-        for item_type in [ItemType::LoginItem, ItemType::LaunchAgent, ItemType::LaunchDaemon, ItemType::SystemExtension] {
-            let disabled_count = items.iter()
-                .filter(|i| i.item_type == item_type && !i.is_enabled)
-                .count();
-
-            for item in items.iter().filter(|i| i.item_type == item_type && i.is_enabled).cloned() {
-                result.push(item);
-            }
-
-            if disabled_count > 0 {
-                if self.state.expanded_disabled.contains(&item_type) {
-                    for item in items.iter().filter(|i| i.item_type == item_type && !i.is_enabled).cloned() {
-                        result.push(item);
-                    }
-                } else {
-                    let label = match item_type {
-                        ItemType::LoginItem => "items",
-                        ItemType::LaunchAgent => "agents",
-                        ItemType::LaunchDaemon => "daemons",
-                        ItemType::SystemExtension => "extensions",
-                    };
-                    result.push(UnifiedItem {
-                        item_type,
-                        name: format!("+{} disabled {}", disabled_count, label),
-                        identifier: String::new(),
-                        status: String::new(),
-                        is_enabled: false,
-                        disabled_count: Some(disabled_count),
-                    });
-                }
-            }
-        }
-        result
+        items
     }
 
     /// Render the application
@@ -324,7 +348,7 @@ impl TuiApp {
             .split(area);
 
         self.render_title_bar(f, layout[0]);
-        self.render_filter_bar(f, layout[1]);
+        self.render_view_bar(f, layout[1]);
         self.render_table(f, layout[2]);
         self.render_shortcuts_bar(f, layout[3]);
 
@@ -339,35 +363,79 @@ impl TuiApp {
         }
     }
 
-    /// Render the filter bar
-    fn render_filter_bar(&self, f: &mut Frame, area: Rect) {
+    /// Render the view bar (filter + scope, top-of-content row)
+    fn render_view_bar(&self, f: &mut Frame, area: Rect) {
+        let key  = Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD);
+        let dim  = Style::default().fg(Color::Rgb(100, 100, 100));
+        let gold = Style::default().fg(Color::Rgb(230, 180, 50));
+        let warn = Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD);
+        let bg   = Style::default().bg(Color::Rgb(18, 18, 18));
+
+        // Delete confirmation takes the full width
+        if let Some(ref name) = self.state.pending_delete {
+            let line = Line::from(vec![
+                Span::styled("Delete \"", warn),
+                Span::styled(name.clone(), warn),
+                Span::styled("\"? Press ^X again to confirm, any other key to cancel.", warn),
+            ]);
+            f.render_widget(
+                Paragraph::new(line).block(Block::default().padding(Padding::horizontal(1))).style(bg),
+                area,
+            );
+            return;
+        }
+
+        // Split: filter on the left, scope on the right
+        let halves = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+            .split(area);
+
         let is_search = matches!(self.state.selected_section, SelectedSection::Search);
         let query = self.state.search_query.clone();
 
-        let content = if is_search {
+        let white = Style::default().fg(Color::Rgb(215, 215, 215));
+
+        let filter_line = if is_search {
             Line::from(vec![
-                Span::styled("Filter: ", Style::default().fg(Color::Rgb(230, 180, 50)).add_modifier(ratatui::style::Modifier::BOLD)),
-                Span::raw(query),
-                Span::styled("_", Style::default().fg(Color::Rgb(230, 180, 50))),
+                Span::styled("F", key),
+                Span::styled("ilter: ", gold),
+                Span::styled(query, gold.add_modifier(ratatui::style::Modifier::BOLD)),
+                Span::styled("_", gold),
             ])
-        } else if !self.state.search_query.is_empty() {
+        } else if !query.is_empty() {
             Line::from(vec![
-                Span::styled("Filter: ", Style::default().fg(Color::Rgb(230, 180, 50))),
-                Span::raw(query),
-                Span::styled("  (Esc to clear)", Style::default().fg(Color::Rgb(100, 100, 100))),
+                Span::styled("F", key),
+                Span::styled("ilter: ", gold),
+                Span::styled(query, gold),
+                Span::styled("  (Esc to clear)", dim),
             ])
         } else {
             Line::from(vec![
-                Span::styled("Filter: ", Style::default().fg(Color::Rgb(100, 100, 100))),
-                Span::styled("press f to filter", Style::default().fg(Color::Rgb(100, 100, 100))),
+                Span::styled("F", key),
+                Span::styled("ilter", white),
             ])
         };
 
-        let para = Paragraph::new(content)
-            .block(Block::default().padding(Padding::horizontal(1)))
-            .style(Style::default().bg(Color::Rgb(18, 18, 18)));
+        let scope_label = match self.state.scope_filter {
+            ScopeFilter::All    => "All",
+            ScopeFilter::User   => "User",
+            ScopeFilter::System => "System",
+        };
+        let scope_line = Line::from(vec![
+            Span::styled("S", key),
+            Span::styled("cope: ", white),
+            Span::raw(scope_label),
+        ]);
 
-        f.render_widget(para, area);
+        f.render_widget(
+            Paragraph::new(filter_line).block(Block::default().padding(Padding::horizontal(1))).style(bg),
+            halves[0],
+        );
+        f.render_widget(
+            Paragraph::new(scope_line).block(Block::default().padding(Padding::horizontal(1))).style(bg),
+            halves[1],
+        );
     }
 
     /// Render the title bar
@@ -377,11 +445,16 @@ impl TuiApp {
         let agent_count = self.state.launch_agents.len();
         let daemon_count = self.state.launch_daemons.len();
         let ext_count = self.state.system_extensions.len();
+        let bg_count = self.state.background_items.len();
 
-        let title = format!(
-            "System Extension Manager │ Items: {} │ Login:{} │ Agents:{} │ Daemons:{} │ Exts:{}",
-            total, login_count, agent_count, daemon_count, ext_count
-        );
+        let title = if self.state.refreshing {
+            "System Extension Manager │ Refreshing…".to_string()
+        } else {
+            format!(
+                "System Extension Manager │ Items: {} │ Login:{} │ Agents:{} │ Daemons:{} │ Exts:{} │ BG:{}",
+                total, login_count, agent_count, daemon_count, ext_count, bg_count
+            )
+        };
 
         let para = Paragraph::new(title)
             .block(Block::default().padding(Padding::horizontal(1)))
@@ -467,7 +540,7 @@ impl TuiApp {
             .collect();
 
         // Table header
-        let header = Row::new(vec!["Type", "Name", "Status"])
+        let header = Row::new(vec!["Type", "Name", "Status", "Scope"])
             .style(Style::default()
                 .fg(Color::Rgb(215, 215, 215))
                 .add_modifier(ratatui::style::Modifier::BOLD))
@@ -481,32 +554,26 @@ impl TuiApp {
                 ItemType::LaunchAgent => "Launch Agent",
                 ItemType::LaunchDaemon => "Launch Daemon",
                 ItemType::SystemExtension => "System Extension",
+                ItemType::BackgroundItem => "Background Item",
             };
 
-            if item.disabled_count.is_some() {
-                // Summary row for collapsed disabled items
-                let dis = Style::default().fg(Color::Rgb(100, 100, 100));
-                let sel_dis = Style::default().bg(Color::Rgb(40, 80, 160)).fg(Color::Rgb(100, 100, 100));
-                let s = if is_selected { sel_dis } else { dis };
-                Row::new(vec![
-                    Cell::from("").style(s),
-                    Cell::from(item.name.as_str()).style(s),
-                    Cell::from("").style(s),
-                ])
-            } else if is_selected {
+            if is_selected {
                 let sel = Style::default().bg(Color::Rgb(40, 80, 160)).fg(Color::Rgb(215, 215, 215));
                 Row::new(vec![
                     Cell::from(type_str).style(sel),
                     Cell::from(item.name.as_str()).style(sel),
                     Cell::from(item.status.as_str()).style(sel),
+                    Cell::from(item.scope).style(sel),
                 ])
             } else if item.is_enabled {
                 let text = Style::default().fg(Color::Rgb(215, 215, 215));
                 let status_style = Style::default().fg(Color::Rgb(72, 199, 142));
+                let scope_style = Style::default().fg(Color::Rgb(130, 160, 200));
                 Row::new(vec![
                     Cell::from(type_str).style(text),
                     Cell::from(item.name.as_str()).style(text),
                     Cell::from(item.status.as_str()).style(status_style),
+                    Cell::from(item.scope).style(scope_style),
                 ])
             } else {
                 let dis = Style::default().fg(Color::Rgb(100, 100, 100));
@@ -514,6 +581,7 @@ impl TuiApp {
                     Cell::from(type_str).style(dis),
                     Cell::from(item.name.as_str()).style(dis),
                     Cell::from(item.status.as_str()).style(dis),
+                    Cell::from(item.scope).style(dis),
                 ])
             }
         }).collect();
@@ -525,8 +593,9 @@ impl TuiApp {
 
         let table = Table::new(rows, &[
             Constraint::Length(17),
-            Constraint::Percentage(60),
-            Constraint::Min(20),
+            Constraint::Percentage(55),
+            Constraint::Min(10),
+            Constraint::Length(7),
         ])
         .header(header)
         .block(
@@ -554,22 +623,23 @@ impl TuiApp {
     /// Render shortcuts bar
     fn render_shortcuts_bar(&self, f: &mut Frame, area: Rect) {
         let key = Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD);
+
         let shortcuts = Line::from(vec![
             Span::styled("↑↓", key),
-            Span::raw(" Nav  "),
-            Span::styled("f", key),
-            Span::raw("ilter  "),
-            Span::styled("n", key),
-            Span::raw("ame  "),
-            Span::styled("t", key),
-            Span::raw("oggle  "),
-            Span::styled("[ ]", key),
-            Span::raw(" collapse / expand  "),
-            Span::styled("o", key),
-            Span::raw("pen parent dir  "),
-            Span::styled("r", key),
-            Span::raw("efresh  "),
-            Span::styled("q", key),
+            Span::raw(" Nav   "),
+            Span::styled("E", key),
+            Span::raw("nable   "),
+            Span::styled("D", key),
+            Span::raw("isable   "),
+            Span::styled("O", key),
+            Span::raw("pen in Finder   "),
+            Span::styled("C", key),
+            Span::raw("opy Identifier   "),
+            Span::styled("^X", key),
+            Span::raw(" delete   "),
+            Span::styled("R", key),
+            Span::raw("efresh   "),
+            Span::styled("Q", key),
             Span::raw("uit"),
         ]);
 
@@ -624,24 +694,46 @@ impl TuiApp {
         f.render_widget(para, area);
     }
 
-    /// Render error overlay
+    /// Render error modal popup centered in the window
     fn render_error_overlay(&self, f: &mut Frame, error: &str, area: Rect) {
+        let popup_width = (area.width * 6 / 10).clamp(44, 84);
+        // inner width inside borders + horizontal padding (1 each side)
+        let inner_width = popup_width.saturating_sub(4) as usize;
+        // estimate wrapped line count for the error text
+        let error_lines = ((error.len() + inner_width - 1) / inner_width).max(1) as u16;
+        // borders(2) + v-padding(2) + error + blank + dismiss
+        let popup_height = (2 + 2 + error_lines + 1 + 1).min(area.height);
+
+        let popup_area = Rect {
+            x: area.x + (area.width.saturating_sub(popup_width)) / 2,
+            y: area.y + (area.height.saturating_sub(popup_height)) / 2,
+            width: popup_width.min(area.width),
+            height: popup_height,
+        };
+
+        f.render_widget(Clear, popup_area);
+
         let block = Block::default()
             .title(" Error ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(220, 70, 70)));
+            .border_style(Style::default().fg(Color::Rgb(220, 70, 70)))
+            .padding(Padding::new(1, 1, 1, 1));
 
         let content = Text::from(vec![
             Line::from(vec![Span::raw(error)]),
             Line::from(vec![Span::raw("")]),
-            Line::from(vec![Span::styled("Press any key to dismiss", Style::default().fg(Color::Rgb(100, 100, 100)))]),
+            Line::from(vec![Span::styled(
+                "Press any key to dismiss",
+                Style::default().fg(Color::Rgb(100, 100, 100)),
+            )]),
         ]);
 
         let para = Paragraph::new(content)
             .block(block)
-            .style(Style::default().bg(Color::Rgb(18, 18, 18)).fg(Color::Rgb(220, 70, 70)));
+            .wrap(Wrap { trim: true })
+            .style(Style::default().bg(Color::Rgb(30, 10, 10)).fg(Color::Rgb(220, 70, 70)));
 
-        f.render_widget(para, area);
+        f.render_widget(para, popup_area);
     }
 
     /// Handle keyboard input
@@ -697,6 +789,11 @@ impl TuiApp {
             return true;
         }
 
+        // Any key other than ctrl-x cancels a pending deletion
+        if key != "ctrl-x" {
+            self.state.pending_delete = None;
+        }
+
         match key {
             "q" | "Q" | "ctrl-c" => return false,
             "?" => {
@@ -705,30 +802,41 @@ impl TuiApp {
             "r" | "R" => {
                 self.refresh_current();
             }
-"f" | "F" | "/" => {
+            "f" | "F" | "/" => {
                 self.state.selected_section = SelectedSection::Search;
                 self.state.search_query.clear();
             }
-            "t" | "T" => {
-                let items = self.get_filtered_items();
-                if let Some(item) = items.get(self.state.selected_index) {
-                    let enable = !item.is_enabled;
-                    self.set_selected_state(enable);
-                }
+            "e" | "E" => {
+                self.set_selected_state(true);
             }
-            "]" => {
-                for t in [ItemType::LoginItem, ItemType::LaunchAgent, ItemType::LaunchDaemon, ItemType::SystemExtension] {
-                    self.state.expanded_disabled.insert(t);
-                }
+            "d" | "D" => {
+                self.set_selected_state(false);
             }
-            "[" => {
-                self.state.expanded_disabled.clear();
+            "c" | "C" => {
+                self.copy_identifier();
             }
-            "n" | "N" => {
-                self.state.show_system_names = !self.state.show_system_names;
+            "s" | "S" => {
+                self.state.scope_filter = match self.state.scope_filter {
+                    ScopeFilter::All => ScopeFilter::User,
+                    ScopeFilter::User => ScopeFilter::System,
+                    ScopeFilter::System => ScopeFilter::All,
+                };
+                self.state.selected_index = 0;
+                self.state.scroll_offset = 0;
             }
             "o" | "O" => {
                 self.open_in_finder();
+            }
+            "ctrl-x" => {
+                if self.state.pending_delete.is_some() {
+                    self.delete_selected();
+                    self.state.pending_delete = None;
+                } else {
+                    let items = self.get_filtered_items();
+                    if let Some(item) = items.get(self.state.selected_index) {
+                        self.state.pending_delete = Some(item.name.clone());
+                    }
+                }
             }
             "k" | "up" => {
                 let items = self.get_filtered_items();
@@ -755,6 +863,92 @@ impl TuiApp {
             _ => {}
         }
         true
+    }
+
+    fn delete_selected(&mut self) {
+        use crate::utils::shell::ShellExecutor;
+
+        let items = self.get_filtered_items();
+        if self.state.selected_index >= items.len() {
+            return;
+        }
+        let item = items[self.state.selected_index].clone();
+
+        let result = match item.item_type {
+            ItemType::BackgroundItem => {
+                self.state.background_items.iter()
+                    .find(|b| b.identifier == item.identifier)
+                    .map(|b| BackgroundItemsService::delete(b))
+            }
+            ItemType::LoginItem => {
+                self.state.login_items.iter()
+                    .find(|i| i.id == item.identifier)
+                    .map(|i| {
+                        if let Some(ref plist) = i.plist_path {
+                            LoginItemsService::remove(&i.id, &plist.to_string_lossy())
+                        } else {
+                            Err(crate::error::AppError::ExtensionActivationFailed(
+                                "No plist path found for this login item.".into()
+                            ))
+                        }
+                    })
+            }
+            ItemType::LaunchAgent => {
+                self.state.launch_agents.iter()
+                    .find(|a| a.label == item.identifier)
+                    .map(|a| {
+                        let plist = a.plist_path.to_string_lossy().to_string();
+                        if item.scope == "User" {
+                            LaunchAgentsService::delete(&a.label, &plist)
+                        } else {
+                            // System agent — needs admin to remove plist
+                            let cmd = format!("launchctl unload '{}'; rm -f '{}'", plist, plist);
+                            ShellExecutor::execute_admin("sh", &["-c", &cmd])
+                                .map(|_| ())
+                        }
+                    })
+            }
+            ItemType::LaunchDaemon => {
+                self.state.launch_daemons.iter()
+                    .find(|d| d.label == item.identifier)
+                    .map(|d| {
+                        let plist = d.plist_path.to_string_lossy().to_string();
+                        let cmd = format!("launchctl unload '{}'; rm -f '{}'", plist, plist);
+                        ShellExecutor::execute_admin("sh", &["-c", &cmd])
+                            .map(|_| ())
+                    })
+            }
+            ItemType::SystemExtension => {
+                Some(Err(crate::error::AppError::ExtensionActivationFailed(
+                    "Use System Settings → General → Login Items & Extensions to uninstall system extensions.".into()
+                )))
+            }
+        };
+
+        match result {
+            Some(Err(e)) => self.error_message = Some(e.to_string()),
+            Some(Ok(_)) => self.load_data(),
+            None => {}
+        }
+    }
+
+    /// Copy the selected item's identifier to the clipboard
+    fn copy_identifier(&mut self) {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let items = self.get_filtered_items();
+        if self.state.selected_index >= items.len() {
+            return;
+        }
+        let identifier = items[self.state.selected_index].identifier.clone();
+
+        if let Ok(mut child) = Command::new("pbcopy").stdin(Stdio::piped()).spawn() {
+            if let Some(stdin) = child.stdin.as_mut() {
+                let _ = stdin.write_all(identifier.as_bytes());
+            }
+            let _ = child.wait();
+        }
     }
 
     /// Open the selected item's location in Finder, with the item selected
@@ -806,6 +1000,16 @@ impl TuiApp {
                 }
                 let _ = Command::new("open").arg("/Library/SystemExtensions").spawn();
             }
+            ItemType::BackgroundItem => {
+                if let Some(bg) = self.state.background_items.iter().find(|b| b.identifier == identifier) {
+                    if let Some(plist) = &bg.plist_path {
+                        if plist.exists() {
+                            let _ = Command::new("open").args(["-R", &plist.to_string_lossy()]).spawn();
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -824,6 +1028,5 @@ struct UnifiedItem {
     identifier: String,
     status: String,
     is_enabled: bool,
-    /// Some(n) marks this as a collapsed summary row for n disabled items
-    disabled_count: Option<usize>,
+    scope: &'static str,
 }

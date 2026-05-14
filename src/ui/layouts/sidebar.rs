@@ -98,6 +98,7 @@ impl Sidebar {
             ItemType::LaunchAgent => 1,
             ItemType::LaunchDaemon => 2,
             ItemType::SystemExtension => 3,
+            ItemType::BackgroundItem => 4,
         }
     }
 }

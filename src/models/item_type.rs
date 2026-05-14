@@ -11,6 +11,7 @@ pub enum ItemType {
     LaunchAgent,
     LaunchDaemon,
     SystemExtension,
+    BackgroundItem,
 }
 
 
@@ -21,6 +22,7 @@ impl ItemType {
             ItemType::LaunchAgent => "Launch Agents",
             ItemType::LaunchDaemon => "Launch Daemons",
             ItemType::SystemExtension => "System Extensions",
+            ItemType::BackgroundItem => "Background Items",
         }
     }
 
@@ -30,6 +32,7 @@ impl ItemType {
             ItemType::LaunchAgent => "▶",
             ItemType::LaunchDaemon => "⚙",
             ItemType::SystemExtension => "◉",
+            ItemType::BackgroundItem => "◈",
         }
     }
 }
