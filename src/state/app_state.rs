@@ -1,7 +1,7 @@
 //! Application state management
 
 use crate::error::AppError;
-use crate::models::{BackgroundItem, ItemType, LaunchAgent, LaunchDaemon, LoginItem, SystemExtension};
+use crate::models::{BackgroundItem, ItemType, LaunchAgent, LaunchDaemon, LoginItem, OpenAtLoginItem, SystemExtension};
 
 
 /// Loading state for async operations
@@ -55,6 +55,9 @@ pub struct AppState {
     pub login_items: Vec<LoginItem>,
     pub login_items_loading: LoadingState,
 
+    pub open_at_login_items: Vec<OpenAtLoginItem>,
+    pub open_at_login_loading: LoadingState,
+
     pub launch_agents: Vec<LaunchAgent>,
     pub launch_agents_loading: LoadingState,
 
@@ -97,6 +100,8 @@ impl Default for AppState {
             show_system_extensions: true,
             login_items: Vec::new(),
             login_items_loading: LoadingState::Idle,
+            open_at_login_items: Vec::new(),
+            open_at_login_loading: LoadingState::Idle,
             launch_agents: Vec::new(),
             launch_agents_loading: LoadingState::Idle,
             launch_daemons: Vec::new(),
@@ -124,6 +129,7 @@ impl AppState {
     pub fn current_list(&self) -> Vec<String> {
         match self.current_item_type {
             ItemType::LoginItem => self.login_items.iter().map(|i| i.name.clone()).collect(),
+            ItemType::OpenAtLogin => self.open_at_login_items.iter().map(|i| i.name.clone()).collect(),
             ItemType::LaunchAgent => self.launch_agents.iter().map(|a| a.name()).collect(),
             ItemType::LaunchDaemon => self.launch_daemons.iter().map(|d| d.label.clone()).collect(),
             ItemType::SystemExtension => self.system_extensions.iter().map(|e| e.identifier.clone()).collect(),
@@ -145,6 +151,7 @@ impl AppState {
     pub fn current_loading(&self) -> &LoadingState {
         match self.current_item_type {
             ItemType::LoginItem => &self.login_items_loading,
+            ItemType::OpenAtLogin => &self.open_at_login_loading,
             ItemType::LaunchAgent => &self.launch_agents_loading,
             ItemType::LaunchDaemon => &self.launch_daemons_loading,
             ItemType::SystemExtension => &self.system_extensions_loading,
@@ -180,7 +187,8 @@ impl AppState {
     pub fn select_prev_section(&mut self) {
         match self.current_item_type {
             ItemType::LoginItem => self.current_item_type = ItemType::BackgroundItem,
-            ItemType::LaunchAgent => self.current_item_type = ItemType::LoginItem,
+            ItemType::OpenAtLogin => self.current_item_type = ItemType::LoginItem,
+            ItemType::LaunchAgent => self.current_item_type = ItemType::OpenAtLogin,
             ItemType::LaunchDaemon => self.current_item_type = ItemType::LaunchAgent,
             ItemType::SystemExtension => self.current_item_type = ItemType::LaunchDaemon,
             ItemType::BackgroundItem => self.current_item_type = ItemType::SystemExtension,
@@ -190,7 +198,8 @@ impl AppState {
 
     pub fn select_next_section(&mut self) {
         match self.current_item_type {
-            ItemType::LoginItem => self.current_item_type = ItemType::LaunchAgent,
+            ItemType::LoginItem => self.current_item_type = ItemType::OpenAtLogin,
+            ItemType::OpenAtLogin => self.current_item_type = ItemType::LaunchAgent,
             ItemType::LaunchAgent => self.current_item_type = ItemType::LaunchDaemon,
             ItemType::LaunchDaemon => self.current_item_type = ItemType::SystemExtension,
             ItemType::SystemExtension => self.current_item_type = ItemType::BackgroundItem,

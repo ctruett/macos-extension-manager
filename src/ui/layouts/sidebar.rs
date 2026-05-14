@@ -95,10 +95,11 @@ impl Sidebar {
     pub fn selected_index(state: &AppState) -> usize {
         match state.current_item_type {
             ItemType::LoginItem => 0,
-            ItemType::LaunchAgent => 1,
-            ItemType::LaunchDaemon => 2,
-            ItemType::SystemExtension => 3,
-            ItemType::BackgroundItem => 4,
+            ItemType::OpenAtLogin => 1,
+            ItemType::LaunchAgent => 2,
+            ItemType::LaunchDaemon => 3,
+            ItemType::SystemExtension => 4,
+            ItemType::BackgroundItem => 5,
         }
     }
 }

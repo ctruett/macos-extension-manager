@@ -4,7 +4,7 @@ use crate::error::AppError;
 use crate::models::ItemType;
 use crate::services::{
     BackgroundItemsService, LaunchAgentsService, LaunchDaemonsService, LoginItemsService,
-    SystemExtensionsService,
+    OpenAtLoginService, SystemExtensionsService,
 };
 use crate::state::{AppState, LoadingState, SelectedSection, ScopeFilter};
 use ratatui::{
@@ -52,6 +52,19 @@ impl TuiApp {
             Err(e) => {
                 self.state.login_items_loading = LoadingState::Error(e.to_string());
                 self.error_message = Some(e.to_string());
+            }
+        }
+
+        // Load open-at-login items
+        self.state.open_at_login_loading = LoadingState::Loading;
+        match OpenAtLoginService::list() {
+            Ok(items) => {
+                self.state.open_at_login_items = items;
+                self.state.open_at_login_loading = LoadingState::Loaded;
+            }
+            Err(e) => {
+                self.state.open_at_login_items = Vec::new();
+                self.state.open_at_login_loading = LoadingState::Error(e.to_string());
             }
         }
 
@@ -150,6 +163,11 @@ impl TuiApp {
                         }
                     }))
             }
+            ItemType::OpenAtLogin => {
+                Some(Err(crate::error::AppError::ExtensionActivationFailed(
+                    "Open at Login items are managed by the system. Use ^D to remove.".to_string()
+                )))
+            }
             ItemType::LaunchAgent => {
                 self.state.launch_agents.iter()
                     .find(|a| a.label == identifier)
@@ -228,6 +246,32 @@ impl TuiApp {
             }
         }
 
+        // Open at Login
+        for item in &self.state.open_at_login_items {
+            let scope = if item.path.as_ref().map(|p| Self::is_user_path(p)).unwrap_or(true) {
+                "User"
+            } else {
+                "System"
+            };
+            let name = if sys {
+                item.path.as_ref()
+                    .and_then(|p| p.file_stem())
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&item.name)
+                    .to_string()
+            } else {
+                item.name.clone()
+            };
+            items.push(UnifiedItem {
+                item_type: ItemType::OpenAtLogin,
+                name,
+                identifier: item.name.clone(),
+                status: if item.hidden { "hidden" } else { "at login" }.to_string(),
+                is_enabled: true,
+                scope,
+            });
+        }
+
         // Launch Agents
         if self.state.show_launch_agents {
             for agent in &self.state.launch_agents {
@@ -300,10 +344,11 @@ impl TuiApp {
         fn type_rank(t: ItemType) -> u8 {
             match t {
                 ItemType::LoginItem => 0,
-                ItemType::LaunchAgent => 1,
-                ItemType::LaunchDaemon => 2,
-                ItemType::SystemExtension => 3,
-                ItemType::BackgroundItem => 4,
+                ItemType::OpenAtLogin => 1,
+                ItemType::LaunchAgent => 2,
+                ItemType::LaunchDaemon => 3,
+                ItemType::SystemExtension => 4,
+                ItemType::BackgroundItem => 5,
             }
         }
 
@@ -442,6 +487,7 @@ impl TuiApp {
     fn render_title_bar(&self, f: &mut Frame, area: Rect) {
         let total = self.get_filtered_items().len();
         let login_count = self.state.login_items.len();
+        let oal_count = self.state.open_at_login_items.len();
         let agent_count = self.state.launch_agents.len();
         let daemon_count = self.state.launch_daemons.len();
         let ext_count = self.state.system_extensions.len();
@@ -451,8 +497,8 @@ impl TuiApp {
             "macOS Extension Manager │ Refreshing…".to_string()
         } else {
             format!(
-                "macOS Extension Manager │ Items: {} │ Login:{} │ Agents:{} │ Daemons:{} │ Exts:{} │ BG:{}",
-                total, login_count, agent_count, daemon_count, ext_count, bg_count
+                "macOS Extension Manager │ Items: {} │ Login:{} │ OAL:{} │ Agents:{} │ Daemons:{} │ Exts:{} │ BG:{}",
+                total, login_count, oal_count, agent_count, daemon_count, ext_count, bg_count
             )
         };
 
@@ -551,6 +597,7 @@ impl TuiApp {
             let is_selected = *abs_index == selected_idx;
             let type_str = match item.item_type {
                 ItemType::LoginItem => "Login Item",
+                ItemType::OpenAtLogin => "Open at Login",
                 ItemType::LaunchAgent => "Launch Agent",
                 ItemType::LaunchDaemon => "Launch Daemon",
                 ItemType::SystemExtension => "System Extension",
@@ -880,6 +927,9 @@ impl TuiApp {
                     .find(|b| b.identifier == item.identifier)
                     .map(|b| BackgroundItemsService::delete(b))
             }
+            ItemType::OpenAtLogin => {
+                Some(OpenAtLoginService::remove(&item.identifier))
+            }
             ItemType::LoginItem => {
                 self.state.login_items.iter()
                     .find(|i| i.id == item.identifier)
@@ -971,6 +1021,15 @@ impl TuiApp {
                     } else if let Some(plist) = &login_item.plist_path {
                         if plist.exists() {
                             let _ = Command::new("open").args(["-R", &plist.to_string_lossy()]).spawn();
+                        }
+                    }
+                }
+            }
+            ItemType::OpenAtLogin => {
+                if let Some(oal) = self.state.open_at_login_items.iter().find(|i| i.name == identifier) {
+                    if let Some(ref path) = oal.path {
+                        if path.exists() {
+                            let _ = Command::new("open").args(["-R", &path.to_string_lossy()]).spawn();
                         }
                     }
                 }

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub enum ItemType {
     #[default]
     LoginItem,
+    OpenAtLogin,
     LaunchAgent,
     LaunchDaemon,
     SystemExtension,
@@ -19,6 +20,7 @@ impl ItemType {
     pub fn display_name(&self) -> &'static str {
         match self {
             ItemType::LoginItem => "Login Items",
+            ItemType::OpenAtLogin => "Open at Login",
             ItemType::LaunchAgent => "Launch Agents",
             ItemType::LaunchDaemon => "Launch Daemons",
             ItemType::SystemExtension => "System Extensions",
@@ -29,6 +31,7 @@ impl ItemType {
     pub fn icon(&self) -> &'static str {
         match self {
             ItemType::LoginItem => "→",
+            ItemType::OpenAtLogin => "⇪",
             ItemType::LaunchAgent => "▶",
             ItemType::LaunchDaemon => "⚙",
             ItemType::SystemExtension => "◉",
