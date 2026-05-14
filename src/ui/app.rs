@@ -88,6 +88,12 @@ impl TuiApp {
                 self.state.system_extensions_loading = LoadingState::Error(e.to_string());
             }
         }
+        
+        // Reset selected index to valid range
+        let total = self.get_all_items().len();
+        if self.state.selected_index >= total && total > 0 {
+            self.state.selected_index = total - 1;
+        }
     }
 
     /// Refresh the current section
@@ -183,46 +189,39 @@ impl TuiApp {
                 name: item.name.clone(),
                 identifier: item.id.clone(),
                 status: status.to_string(),
-                detail: item.path.display().to_string(),
             });
         }
 
         // Launch Agents
         for agent in &self.state.launch_agents {
             let status = if agent.loaded { "loaded" } else { "unloaded" };
-            let pid = agent.pid.map(|p| p.to_string()).unwrap_or_else(|| "-".to_string());
             items.push(UnifiedItem {
                 item_type: ItemType::LaunchAgent,
                 name: agent.bundle_name(),
                 identifier: agent.label.clone(),
                 status: status.to_string(),
-                detail: format!("PID: {}", pid),
             });
         }
 
         // Launch Daemons
         for daemon in &self.state.launch_daemons {
             let status = if daemon.loaded { "loaded" } else { "unloaded" };
-            let pid = daemon.pid.map(|p| p.to_string()).unwrap_or_else(|| "-".to_string());
             items.push(UnifiedItem {
                 item_type: ItemType::LaunchDaemon,
                 name: daemon.label.clone(),
                 identifier: daemon.label.clone(),
                 status: status.to_string(),
-                detail: format!("PID: {}", pid),
             });
         }
 
         // System Extensions
         for ext in &self.state.system_extensions {
             let display_name = ext.name.as_deref().unwrap_or(&ext.identifier);
-            let ext_type = ext.extension_types.first().map(|t| t.to_string()).unwrap_or_else(|| "Extension".to_string());
             items.push(UnifiedItem {
                 item_type: ItemType::SystemExtension,
                 name: display_name.to_string(),
                 identifier: ext.identifier.clone(),
                 status: ext.status.to_string().to_lowercase(),
-                detail: format!("{} v{}", ext_type, ext.version),
             });
         }
 
@@ -327,54 +326,61 @@ impl TuiApp {
             return;
         }
 
-        // Calculate visible area height (accounting for header)
-        let header_height = 1;
-        let visible_rows = (area.height as usize).saturating_sub(header_height);
-
-        // Calculate scroll offset to keep selected item visible
+        // The table widget renders: header + rows. Borders take 2 rows (top/bottom).
+        // Total area height includes everything. We need to account for borders.
+        let area_height = area.height as usize;
+        
+        // Table renders: 1 header row + N data rows + 2 border rows (top/bottom of block)
+        // So visible data rows = area_height - 1 (header) - 2 (borders) = area_height - 3
+        let table_border_rows = 2;
+        let header_row = 1;
+        let data_rows = area_height.saturating_sub(header_row + table_border_rows);
+        let visible_rows = data_rows.max(1);
+        
         let items_len = items.len();
+        
+        // Get selected index clamped to valid range
+        let selected_idx = if items_len == 0 { 0 } else { self.state.selected_index.min(items_len - 1) };
+        
+        // Calculate scroll offset - always keep selected item visible
         let mut scroll_offset = self.state.scroll_offset;
         
-        // Clamp selected_index to valid range
-        let selected_idx = self.state.selected_index.min(items_len.saturating_sub(1));
-        
-        // If selected item is below visible area, scroll down to show it
-        // We want the selected item to be visible, ideally near the bottom
-        if selected_idx >= scroll_offset + visible_rows {
-            scroll_offset = selected_idx.saturating_sub(visible_rows) + 1;
+        // If selected is below visible area, scroll down
+        let bottom_visible = scroll_offset + visible_rows;
+        if selected_idx >= bottom_visible {
+            scroll_offset = selected_idx - visible_rows + 1;
         }
-        // If selected item is above visible area, scroll up
+        // If selected is above visible area, scroll up
         if selected_idx < scroll_offset {
             scroll_offset = selected_idx;
         }
         
-        // Clamp scroll_offset to valid range
-        if visible_rows > 0 {
-            let max_offset = items_len.saturating_sub(visible_rows);
+        // Clamp scroll offset to valid range
+        if items_len > visible_rows {
+            let max_offset = items_len - visible_rows;
             scroll_offset = scroll_offset.min(max_offset);
         } else {
             scroll_offset = 0;
         }
 
-        // Get visible items (render one extra row at bottom to ensure selection is visible)
-        let visible_items: Vec<_> = items.iter()
+        // Get items to display
+        let display_items: Vec<_> = items.iter()
             .skip(scroll_offset)
             .take(visible_rows)
             .enumerate()
+            .map(|(i, item)| (scroll_offset + i, item))
             .collect();
 
         // Table header
-        let header = Row::new(vec!["Type", "Name", "Status", "Details"])
+        let header = Row::new(vec!["Type", "Name", "Status"])
             .style(Style::default()
                 .fg(Color::White)
                 .add_modifier(ratatui::style::Modifier::BOLD))
             .height(1);
 
         // Table rows
-        let rows: Vec<Row> = visible_items.iter().map(|(i, item)| {
-            // Absolute index in full list
-            let abs_index = i + scroll_offset;
-            let is_selected = abs_index == self.state.selected_index;
+        let rows: Vec<Row> = display_items.iter().map(|(abs_index, item)| {
+            let is_selected = *abs_index == selected_idx;
             let type_str = match item.item_type {
                 ItemType::LoginItem => "Login Item",
                 ItemType::LaunchAgent => "Launch Agent",
@@ -386,7 +392,6 @@ impl TuiApp {
                 type_str,
                 &item.name,
                 item.status.as_str(),
-                &item.detail,
             ])
             .style(if is_selected {
                 Style::default().bg(Color::Blue).fg(Color::White)
@@ -395,16 +400,15 @@ impl TuiApp {
             })
         }).collect();
 
-        // Show scroll indicators if there are more items
-        let total_items = items.len();
+        // Scroll indicators
         let can_scroll_up = scroll_offset > 0;
-        let can_scroll_down = (scroll_offset + visible_rows) < total_items;
+        let can_scroll_down = scroll_offset + visible_rows < items_len;
+        let position = format!(" {}/{}", selected_idx + 1, items_len);
 
         let table = Table::new(rows, &[
             Constraint::Length(14),
-            Constraint::Percentage(40),
-            Constraint::Length(12),
-            Constraint::Min(0),
+            Constraint::Percentage(60),
+            Constraint::Min(20),
         ])
         .header(header)
         .block(
@@ -412,9 +416,9 @@ impl TuiApp {
                 .borders(Borders::ALL)
                 .title_bottom(format!(
                     "{}{}{}",
-                    if can_scroll_up { "▲ " } else { "  " },
-                    format!(" {}/{} ", self.state.selected_index + 1, total_items),
-                    if can_scroll_down { " ▼" } else { "  " }
+                    if can_scroll_up { "▲ " } else { "" },
+                    position,
+                    if can_scroll_down { " ▼" } else { "" }
                 ))
         )
         .style(Style::default().bg(Color::Black));
@@ -426,16 +430,16 @@ impl TuiApp {
     fn render_shortcuts_bar(&self, f: &mut Frame, area: Rect) {
         let shortcuts = Line::from(vec![
             Span::styled(" ↑↓ ", Style::default().fg(Color::Yellow)),
-            Span::raw("Navigate  "),
-            Span::styled(" Space ", Style::default().fg(Color::Yellow)),
+            Span::raw("Nav  "),
+            Span::styled("Space", Style::default().fg(Color::Yellow)),
             Span::raw("Toggle  "),
-            Span::styled(" / ", Style::default().fg(Color::Yellow)),
+            Span::styled("/", Style::default().fg(Color::Yellow)),
             Span::raw("Search  "),
-            Span::styled(" g/G ", Style::default().fg(Color::Yellow)),
-            Span::raw("Top/Bottom  "),
-            Span::styled(" r ", Style::default().fg(Color::Yellow)),
+            Span::styled("o", Style::default().fg(Color::Yellow)),
+            Span::raw("Open  "),
+            Span::styled("r", Style::default().fg(Color::Yellow)),
             Span::raw("Refresh  "),
-            Span::styled(" q ", Style::default().fg(Color::Yellow)),
+            Span::styled("q", Style::default().fg(Color::Yellow)),
             Span::raw("Quit"),
         ]);
 
@@ -465,6 +469,7 @@ impl TuiApp {
             Line::from(vec![Span::raw("")]),
             Line::from(vec![Span::styled(" Space    ", Style::default().fg(Color::Yellow)), Span::raw("Toggle selected item on/off")]),
             Line::from(vec![Span::styled(" Enter    ", Style::default().fg(Color::Yellow)), Span::raw("Toggle selected item on/off")]),
+            Line::from(vec![Span::styled(" o        ", Style::default().fg(Color::Yellow)), Span::raw("Open item location in Finder")]),
             Line::from(vec![Span::styled(" /        ", Style::default().fg(Color::Yellow)), Span::raw("Focus search input")]),
             Line::from(vec![Span::styled(" Esc      ", Style::default().fg(Color::Yellow)), Span::raw("Clear search / close dialogs")]),
             Line::from(vec![Span::styled(" r        ", Style::default().fg(Color::Yellow)), Span::raw("Refresh all items")]),
@@ -525,26 +530,34 @@ impl TuiApp {
             "r" | "R" => {
                 self.refresh_current();
             }
+            "o" | "O" => {
+                // Open item location in Finder
+                self.open_in_finder();
+            }
             "k" | "up" => {
-                let len = self.get_filtered_items().len();
-                if self.state.selected_index > 0 && len > 0 {
+                let items = self.get_filtered_items();
+                if self.state.selected_index > 0 && !items.is_empty() {
                     self.state.selected_index -= 1;
                 }
             }
             "j" | "down" => {
-                let len = self.get_filtered_items().len();
-                if self.state.selected_index < len.saturating_sub(1) {
+                let items = self.get_filtered_items();
+                if self.state.selected_index < items.len().saturating_sub(1) {
                     self.state.selected_index += 1;
                 }
             }
             "g" => {
                 // Go to top
+                let items = self.get_filtered_items();
                 self.state.selected_index = 0;
+                self.state.scroll_offset = 0;
             }
             "G" => {
                 // Go to bottom
-                let len = self.get_filtered_items().len();
-                self.state.selected_index = len.saturating_sub(1);
+                let items = self.get_filtered_items();
+                if !items.is_empty() {
+                    self.state.selected_index = items.len() - 1;
+                }
             }
             " " | "space" | "enter" => {
                 // Toggle selected item
@@ -577,6 +590,60 @@ impl TuiApp {
         }
         true
     }
+
+    /// Open the selected item's location in Finder
+    fn open_in_finder(&mut self) {
+        use std::process::Command;
+        
+        let all_items = self.get_all_items();
+        if self.state.selected_index >= all_items.len() {
+            return;
+        }
+
+        let item = &all_items[self.state.selected_index];
+        
+        match item.item_type {
+            ItemType::LoginItem => {
+                // Find the login item and open its path
+                if let Some(login_item) = self.state.login_items.iter().find(|i| &i.id == &item.identifier) {
+                    if std::path::Path::new(&login_item.path).exists() {
+                        if let Some(parent) = login_item.path.parent() {
+                            let _ = Command::new("open").arg(parent).spawn();
+                        }
+                    }
+                }
+            }
+            ItemType::LaunchAgent => {
+                // Find the agent and open its plist directory
+                if let Some(agent) = self.state.launch_agents.iter().find(|a| &a.label == &item.identifier) {
+                    let path = std::path::PathBuf::from(&agent.plist_path);
+                    if path.exists() {
+                        if let Some(parent) = path.parent() {
+                            let _ = Command::new("open").arg(parent).spawn();
+                        }
+                    }
+                }
+            }
+            ItemType::LaunchDaemon => {
+                // Find the daemon and open its plist directory
+                if let Some(daemon) = self.state.launch_daemons.iter().find(|d| &d.label == &item.identifier) {
+                    let path = std::path::PathBuf::from(&daemon.plist_path);
+                    if path.exists() {
+                        if let Some(parent) = path.parent() {
+                            let _ = Command::new("open").arg(parent).spawn();
+                        }
+                    }
+                }
+            }
+            ItemType::SystemExtension => {
+                // System extensions are in system directories
+                let path = format!("/Library/SystemExtensions/{}", item.name);
+                if std::path::Path::new(&path).exists() {
+                    let _ = Command::new("open").arg(&path).spawn();
+                }
+            }
+        }
+    }
 }
 
 impl Default for TuiApp {
@@ -591,5 +658,4 @@ struct UnifiedItem {
     name: String,
     identifier: String,
     status: String,
-    detail: String,
 }
