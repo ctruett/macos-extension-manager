@@ -329,29 +329,37 @@ impl TuiApp {
 
         // Calculate visible area height (accounting for header)
         let header_height = 1;
-        // Reserve 1 row for the selected item at the bottom
-        let available_height = area.height.saturating_sub(header_height).saturating_sub(1);
+        let visible_rows = (area.height as usize).saturating_sub(header_height);
 
-        // Calculate scroll offset based on selection
+        // Calculate scroll offset to keep selected item visible
+        let items_len = items.len();
         let mut scroll_offset = self.state.scroll_offset;
         
-        // If selection is below visible area, scroll down
-        if self.state.selected_index >= scroll_offset + available_height as usize {
-            scroll_offset = self.state.selected_index - available_height as usize + 1;
+        // Clamp selected_index to valid range
+        let selected_idx = self.state.selected_index.min(items_len.saturating_sub(1));
+        
+        // If selected item is below visible area, scroll down to show it
+        // We want the selected item to be visible, ideally near the bottom
+        if selected_idx >= scroll_offset + visible_rows {
+            scroll_offset = selected_idx.saturating_sub(visible_rows) + 1;
         }
-        // If selection is above visible area, scroll up
-        if self.state.selected_index < scroll_offset {
-            scroll_offset = self.state.selected_index;
+        // If selected item is above visible area, scroll up
+        if selected_idx < scroll_offset {
+            scroll_offset = selected_idx;
         }
         
-        // Ensure scroll_offset is valid
-        let max_scroll = items.len().saturating_sub(available_height as usize);
-        scroll_offset = scroll_offset.min(max_scroll);
+        // Clamp scroll_offset to valid range
+        if visible_rows > 0 {
+            let max_offset = items_len.saturating_sub(visible_rows);
+            scroll_offset = scroll_offset.min(max_offset);
+        } else {
+            scroll_offset = 0;
+        }
 
-        // Get visible items
+        // Get visible items (render one extra row at bottom to ensure selection is visible)
         let visible_items: Vec<_> = items.iter()
             .skip(scroll_offset)
-            .take(available_height as usize)
+            .take(visible_rows)
             .enumerate()
             .collect();
 
@@ -390,7 +398,7 @@ impl TuiApp {
         // Show scroll indicators if there are more items
         let total_items = items.len();
         let can_scroll_up = scroll_offset > 0;
-        let can_scroll_down = (scroll_offset + available_height as usize) < total_items;
+        let can_scroll_down = (scroll_offset + visible_rows) < total_items;
 
         let table = Table::new(rows, &[
             Constraint::Length(14),
