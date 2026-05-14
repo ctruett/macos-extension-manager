@@ -47,6 +47,9 @@ pub struct AppState {
     /// Selected index in the current list
     pub selected_index: usize,
     
+    /// Scroll offset for the list
+    pub scroll_offset: usize,
+    
     /// Search query
     pub search_query: String,
     

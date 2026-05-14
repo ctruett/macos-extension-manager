@@ -327,6 +327,33 @@ impl TuiApp {
             return;
         }
 
+        // Calculate visible area height (accounting for header)
+        let header_height = 1;
+        let available_height = area.height.saturating_sub(header_height);
+
+        // Calculate scroll offset based on selection
+        let mut scroll_offset = self.state.scroll_offset;
+        
+        // If selection is below visible area, scroll down
+        if self.state.selected_index >= scroll_offset + available_height as usize {
+            scroll_offset = self.state.selected_index - available_height as usize + 1;
+        }
+        // If selection is above visible area, scroll up
+        if self.state.selected_index < scroll_offset {
+            scroll_offset = self.state.selected_index;
+        }
+        
+        // Ensure scroll_offset is valid
+        let max_scroll = items.len().saturating_sub(available_height as usize);
+        scroll_offset = scroll_offset.min(max_scroll);
+
+        // Get visible items
+        let visible_items: Vec<_> = items.iter()
+            .skip(scroll_offset)
+            .take(available_height as usize)
+            .enumerate()
+            .collect();
+
         // Table header
         let header = Row::new(vec!["Type", "Name", "Status", "Details"])
             .style(Style::default()
@@ -335,21 +362,15 @@ impl TuiApp {
             .height(1);
 
         // Table rows
-        let rows: Vec<Row> = items.iter().enumerate().map(|(i, item)| {
-            let is_selected = i == self.state.selected_index;
+        let rows: Vec<Row> = visible_items.iter().map(|(i, item)| {
+            // Absolute index in full list
+            let abs_index = i + scroll_offset;
+            let is_selected = abs_index == self.state.selected_index;
             let type_str = match item.item_type {
                 ItemType::LoginItem => "Login Item",
                 ItemType::LaunchAgent => "Launch Agent",
                 ItemType::LaunchDaemon => "Launch Daemon",
                 ItemType::SystemExtension => "System Ext",
-            };
-
-            // Status color
-            let status_fg = match item.status.as_str() {
-                "enabled" | "loaded" | "activated" => Color::Green,
-                "disabled" | "unloaded" | "deactivated" => Color::Red,
-                "pending" => Color::Yellow,
-                _ => Color::White,
             };
 
             Row::new(vec![
@@ -365,20 +386,10 @@ impl TuiApp {
             })
         }).collect();
 
-        // Search bar (if searching)
-        if matches!(self.state.selected_section, SelectedSection::Search) && !self.state.search_query.is_empty() {
-            let search_block = Block::default()
-                .title(format!("/{}", self.state.search_query))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan));
-            
-            let para = Paragraph::new("")
-                .block(search_block)
-                .style(Style::default().bg(Color::DarkGray));
-            
-            f.render_widget(para, area);
-            return;
-        }
+        // Show scroll indicators if there are more items
+        let total_items = items.len();
+        let can_scroll_up = scroll_offset > 0;
+        let can_scroll_down = (scroll_offset + available_height as usize) < total_items;
 
         let table = Table::new(rows, &[
             Constraint::Length(14),
@@ -387,7 +398,16 @@ impl TuiApp {
             Constraint::Min(0),
         ])
         .header(header)
-        .block(Block::default().borders(Borders::ALL))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title_bottom(format!(
+                    "{}{}{}",
+                    if can_scroll_up { "▲ " } else { "  " },
+                    format!(" {}/{} ", self.state.selected_index + 1, total_items),
+                    if can_scroll_down { " ▼" } else { "  " }
+                ))
+        )
         .style(Style::default().bg(Color::Black));
 
         f.render_widget(table, area);
