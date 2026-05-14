@@ -25,7 +25,7 @@ name = "system_extension_manager"
 path = "src/lib.rs"
 
 [[bin]]
-name = "system-extension-manager"
+name = "extman"
 path = "src/main.rs"
 
 [dev-dependencies]

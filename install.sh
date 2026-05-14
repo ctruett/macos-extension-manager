@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-BINARY_NAME="system-extension-manager"
+BINARY_NAME="extman"
 INSTALL_DIR="/usr/local/bin"
 
 echo "Building $BINARY_NAME..."
