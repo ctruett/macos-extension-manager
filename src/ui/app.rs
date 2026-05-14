@@ -679,7 +679,7 @@ impl TuiApp {
             Span::styled("D", key),
             Span::raw("isable   "),
             Span::styled("O", key),
-            Span::raw("pen in Finder   "),
+            Span::raw("pen Location   "),
             Span::styled("C", key),
             Span::raw("opy Identifier   "),
             Span::styled("^D", key),
@@ -724,7 +724,7 @@ impl TuiApp {
             Line::from(vec![Span::styled(" Actions ", Style::default().fg(Color::Rgb(70, 190, 200)).add_modifier(ratatui::style::Modifier::BOLD))]),
             Line::from(vec![Span::raw("")]),
             Line::from(vec![Span::styled("Space", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("     Toggle selected item on/off")]),
-            Line::from(vec![Span::styled("o", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("        Open item location in Finder")]),
+            Line::from(vec![Span::styled("o", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("        Open item location (Login Items panel for Open at Login)")]),
             Line::from(vec![Span::styled("/", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("        Focus search input")]),
             Line::from(vec![Span::styled("Esc", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("      Clear search / close dialogs")]),
             Line::from(vec![Span::styled("r", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("        Refresh all items")]),
@@ -872,7 +872,7 @@ impl TuiApp {
                 self.state.scroll_offset = 0;
             }
             "o" | "O" => {
-                self.open_in_finder();
+                self.open_location();
             }
             "ctrl-d" => {
                 if self.state.pending_delete.is_some() {
@@ -1001,8 +1001,7 @@ impl TuiApp {
         }
     }
 
-    /// Open the selected item's location in Finder, with the item selected
-    fn open_in_finder(&mut self) {
+    fn open_location(&mut self) {
         use std::process::Command;
 
         let items = self.get_filtered_items();
@@ -1026,13 +1025,9 @@ impl TuiApp {
                 }
             }
             ItemType::OpenAtLogin => {
-                if let Some(oal) = self.state.open_at_login_items.iter().find(|i| i.name == identifier) {
-                    if let Some(ref path) = oal.path {
-                        if path.exists() {
-                            let _ = Command::new("open").args(["-R", &path.to_string_lossy()]).spawn();
-                        }
-                    }
-                }
+                let _ = Command::new("open")
+                    .arg("x-apple.systempreferences:com.apple.LoginItems-Settings.extension")
+                    .spawn();
             }
             ItemType::LaunchAgent => {
                 if let Some(agent) = self.state.launch_agents.iter().find(|a| a.label == identifier) {
