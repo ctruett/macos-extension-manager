@@ -448,10 +448,10 @@ impl TuiApp {
         let bg_count = self.state.background_items.len();
 
         let title = if self.state.refreshing {
-            "System Extension Manager │ Refreshing…".to_string()
+            "macOS Extension Manager │ Refreshing…".to_string()
         } else {
             format!(
-                "System Extension Manager │ Items: {} │ Login:{} │ Agents:{} │ Daemons:{} │ Exts:{} │ BG:{}",
+                "macOS Extension Manager │ Items: {} │ Login:{} │ Agents:{} │ Daemons:{} │ Exts:{} │ BG:{}",
                 total, login_count, agent_count, daemon_count, ext_count, bg_count
             )
         };
