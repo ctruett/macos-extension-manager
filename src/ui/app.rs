@@ -1,7 +1,7 @@
 //! Main TUI application
 
 use crate::error::AppError;
-use crate::models::{ItemType, LaunchAgent, LoginItem, SystemExtension};
+use crate::models::ItemType;
 use crate::services::{
     LaunchAgentsService, LaunchDaemonsService, LoginItemsService, SystemExtensionsService,
 };
@@ -249,66 +249,90 @@ impl TuiApp {
     pub fn render(&self, f: &mut Frame) {
         let area = f.size();
 
-        // Main layout: header, content, footer
-        let chunks = Layout::default()
+        // Main layout: content (with header embedded)
+        let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1),
-                Constraint::Min(0),
-                Constraint::Length(1),
+                Constraint::Length(1),  // Title bar
+                Constraint::Min(0),      // Main content (table)
+                Constraint::Length(1),   // Shortcuts bar
             ])
             .split(area);
 
-        // Header
-        self.render_header(f, chunks[0]);
+        // Title bar
+        self.render_title_bar(f, layout[0]);
 
-        // Main content - single unified table
-        self.render_content(f, chunks[1]);
+        // Main content area with table
+        self.render_table(f, layout[1]);
 
-        // Footer
-        self.render_footer(f, chunks[2]);
+        // Shortcuts bar at bottom
+        self.render_shortcuts_bar(f, layout[2]);
 
-        // Help overlay
+        // Help overlay (covers everything)
         if self.state.show_help {
-            self.render_help(f, area);
+            self.render_help_overlay(f, area);
         }
 
-        // Error message
+        // Error message overlay
         if let Some(ref err) = self.error_message {
-            self.render_error(f, err, area);
+            self.render_error_overlay(f, err, area);
         }
     }
 
-    /// Render the header
-    fn render_header(&self, f: &mut Frame, area: Rect) {
-        let title = " System Extension Manager ";
-        let text = Line::from(vec![
-            Span::styled("┌", Style::default().fg(Color::White)),
-            Span::styled(title, Style::default().fg(Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD)),
-            Span::styled("─────────────────────────────────────────────────────", Style::default().fg(Color::DarkGray)),
-            Span::styled("┐", Style::default().fg(Color::White)),
-        ]);
-
-        let para = Paragraph::new(text)
-            .style(Style::default().bg(Color::Black));
-
-        f.render_widget(para, area);
-    }
-
-    /// Render the main content - unified table
-    fn render_content(&self, f: &mut Frame, area: Rect) {
-        let items = self.get_filtered_items();
-        let total = items.len();
+    /// Render the title bar
+    fn render_title_bar(&self, f: &mut Frame, area: Rect) {
+        let total = self.get_filtered_items().len();
         let login_count = self.state.login_items.len();
         let agent_count = self.state.launch_agents.len();
         let daemon_count = self.state.launch_daemons.len();
         let ext_count = self.state.system_extensions.len();
 
-        // Build the table
+        let title = format!(
+            " System Extension Manager │ Items: {} │ Login:{} │ Agents:{} │ Daemons:{} │ Exts:{} ",
+            total, login_count, agent_count, daemon_count, ext_count
+        );
+        
+        let para = Paragraph::new(title)
+            .style(Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(ratatui::style::Modifier::BOLD));
+        
+        f.render_widget(para, area);
+    }
+
+    /// Render the table
+    fn render_table(&self, f: &mut Frame, area: Rect) {
+        let items = self.get_filtered_items();
+
+        // Empty state
+        if items.is_empty() {
+            let msg = if self.state.search_query.is_empty() {
+                " No items found. Press 'r' to refresh."
+            } else {
+                &format!(" No items match '{}'. Press Esc to clear search.", self.state.search_query)
+            };
+            
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray));
+            
+            let para = Paragraph::new(msg.to_string())
+                .block(block)
+                .style(Style::default().fg(Color::White));
+            
+            f.render_widget(para, area);
+            return;
+        }
+
+        // Table header
         let header = Row::new(vec!["Type", "Name", "Status", "Details"])
-            .style(Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD))
+            .style(Style::default()
+                .fg(Color::White)
+                .add_modifier(ratatui::style::Modifier::BOLD))
             .height(1);
 
+        // Table rows
         let rows: Vec<Row> = items.iter().enumerate().map(|(i, item)| {
             let is_selected = i == self.state.selected_index;
             let type_str = match item.item_type {
@@ -317,8 +341,9 @@ impl TuiApp {
                 ItemType::LaunchDaemon => "Launch Daemon",
                 ItemType::SystemExtension => "System Ext",
             };
-            
-            let status_color = match item.status.as_str() {
+
+            // Status color
+            let status_fg = match item.status.as_str() {
                 "enabled" | "loaded" | "activated" => Color::Green,
                 "disabled" | "unloaded" | "deactivated" => Color::Red,
                 "pending" => Color::Yellow,
@@ -328,25 +353,27 @@ impl TuiApp {
             Row::new(vec![
                 type_str,
                 &item.name,
-                &item.status,
+                item.status.as_str(),
                 &item.detail,
             ])
             .style(if is_selected {
                 Style::default().bg(Color::Blue).fg(Color::White)
             } else {
-                Style::default()
+                Style::default().fg(Color::White)
             })
         }).collect();
 
-        if items.is_empty() {
-            let msg = if self.state.search_query.is_empty() {
-                " No items found. Press r to refresh."
-            } else {
-                " No items match your search."
-            };
-            let para = Paragraph::new(msg)
-                .block(Block::default().borders(Borders::ALL).title(" Items (0) "))
-                .style(Style::default().bg(Color::DarkGray).fg(Color::White));
+        // Search bar (if searching)
+        if matches!(self.state.selected_section, SelectedSection::Search) && !self.state.search_query.is_empty() {
+            let search_block = Block::default()
+                .title(format!("/{}", self.state.search_query))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan));
+            
+            let para = Paragraph::new("")
+                .block(search_block)
+                .style(Style::default().bg(Color::DarkGray));
+            
             f.render_widget(para, area);
             return;
         }
@@ -357,83 +384,63 @@ impl TuiApp {
             Constraint::Length(12),
             Constraint::Min(0),
         ])
-            .header(header)
-            .block(Block::default().borders(Borders::ALL).title(format!(
-                " Items ({}) | Login:{} | Agents:{} | Daemons:{} | Exts:{} ",
-                total, login_count, agent_count, daemon_count, ext_count
-            )));
+        .header(header)
+        .block(Block::default().borders(Borders::ALL))
+        .style(Style::default().bg(Color::Black));
 
         f.render_widget(table, area);
-
-        // Search input overlay
-        if matches!(self.state.selected_section, SelectedSection::Search) {
-            self.render_search_input(f, area);
-        }
     }
 
-    /// Render search input
-    fn render_search_input(&self, f: &mut Frame, area: Rect) {
-        let search_text = format!("/ {}", self.state.search_query);
-        let block = Block::default()
-            .title(" Search ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
-        
-        let para = Paragraph::new(search_text)
-            .block(block)
-            .style(Style::default().bg(Color::DarkGray).fg(Color::White));
-
-        f.render_widget(para, area);
-    }
-
-    /// Render the footer
-    fn render_footer(&self, f: &mut Frame, area: Rect) {
+    /// Render shortcuts bar
+    fn render_shortcuts_bar(&self, f: &mut Frame, area: Rect) {
         let shortcuts = Line::from(vec![
             Span::styled(" ↑↓ ", Style::default().fg(Color::Yellow)),
-            Span::raw("Navigate "),
+            Span::raw("Navigate  "),
             Span::styled(" Space ", Style::default().fg(Color::Yellow)),
-            Span::raw("Toggle "),
+            Span::raw("Toggle  "),
             Span::styled(" / ", Style::default().fg(Color::Yellow)),
-            Span::raw("Search "),
+            Span::raw("Search  "),
+            Span::styled(" g/G ", Style::default().fg(Color::Yellow)),
+            Span::raw("Top/Bottom  "),
             Span::styled(" r ", Style::default().fg(Color::Yellow)),
-            Span::raw("Refresh "),
+            Span::raw("Refresh  "),
             Span::styled(" q ", Style::default().fg(Color::Yellow)),
             Span::raw("Quit"),
         ]);
 
         let para = Paragraph::new(shortcuts)
-            .style(Style::default().bg(Color::Black));
-
+            .style(Style::default().bg(Color::Black).fg(Color::White));
+        
         f.render_widget(para, area);
     }
 
     /// Render help overlay
-    fn render_help(&self, f: &mut Frame, area: Rect) {
+    fn render_help_overlay(&self, f: &mut Frame, area: Rect) {
         let block = Block::default()
-            .title(" Help - Keyboard Shortcuts ")
+            .title(" Keyboard Shortcuts ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
+            .border_style(Style::default().fg(Color::Cyan))
+            .style(Style::default().bg(Color::Black));
 
         let content = Text::from(vec![
+            Line::from(vec![Span::styled(" Navigation ", Style::default().fg(Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD))]),
             Line::from(vec![Span::raw("")]),
             Line::from(vec![Span::styled(" ↑ / k    ", Style::default().fg(Color::Yellow)), Span::raw("Move selection up")]),
             Line::from(vec![Span::styled(" ↓ / j    ", Style::default().fg(Color::Yellow)), Span::raw("Move selection down")]),
-            Line::from(vec![Span::styled(" g        ", Style::default().fg(Color::Yellow)), Span::raw("Go to top")]),
-            Line::from(vec![Span::styled(" Shift+G   ", Style::default().fg(Color::Yellow)), Span::raw("Go to bottom")]),
-            Line::from(vec![Span::styled(" Space     ", Style::default().fg(Color::Yellow)), Span::raw("Toggle selected item on/off")]),
-            Line::from(vec![Span::styled(" Enter     ", Style::default().fg(Color::Yellow)), Span::raw("Toggle selected item on/off")]),
-            Line::from(vec![Span::styled(" /        ", Style::default().fg(Color::Yellow)), Span::raw("Focus search")]),
+            Line::from(vec![Span::styled(" g        ", Style::default().fg(Color::Yellow)), Span::raw("Go to top of list")]),
+            Line::from(vec![Span::styled(" G        ", Style::default().fg(Color::Yellow)), Span::raw("Go to bottom of list")]),
+            Line::from(vec![Span::raw("")]),
+            Line::from(vec![Span::styled(" Actions ", Style::default().fg(Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD))]),
+            Line::from(vec![Span::raw("")]),
+            Line::from(vec![Span::styled(" Space    ", Style::default().fg(Color::Yellow)), Span::raw("Toggle selected item on/off")]),
+            Line::from(vec![Span::styled(" Enter    ", Style::default().fg(Color::Yellow)), Span::raw("Toggle selected item on/off")]),
+            Line::from(vec![Span::styled(" /        ", Style::default().fg(Color::Yellow)), Span::raw("Focus search input")]),
             Line::from(vec![Span::styled(" Esc      ", Style::default().fg(Color::Yellow)), Span::raw("Clear search / close dialogs")]),
             Line::from(vec![Span::styled(" r        ", Style::default().fg(Color::Yellow)), Span::raw("Refresh all items")]),
-            Line::from(vec![Span::styled(" q        ", Style::default().fg(Color::Yellow)), Span::raw("Quit application")]),
             Line::from(vec![Span::raw("")]),
+            Line::from(vec![Span::styled(" Quit: q  ", Style::default().fg(Color::Yellow)), Span::raw("Exit application")]),
             Line::from(vec![Span::raw("")]),
-            Line::from(vec![Span::styled(" Toggling Items:", Style::default().fg(Color::White))]),
-            Line::from(vec![Span::raw("  Login Items    - Enable/disable at login")]),
-            Line::from(vec![Span::raw("  Launch Agents  - Load/unload user services")]),
-            Line::from(vec![Span::raw("  Launch Daemons - Load/unload system services (prompts for admin)")]),
-            Line::from(vec![Span::raw("  System Exts    - Activate/deactivate extensions (prompts for admin)")]),
-            Line::from(vec![Span::raw("")]),
+            Line::from(vec![Span::styled(" Press Esc or ? to close this help ", Style::default().fg(Color::DarkGray))]),
         ]);
 
         let para = Paragraph::new(content)
@@ -443,8 +450,8 @@ impl TuiApp {
         f.render_widget(para, area);
     }
 
-    /// Render error message
-    fn render_error(&self, f: &mut Frame, error: &str, area: Rect) {
+    /// Render error overlay
+    fn render_error_overlay(&self, f: &mut Frame, error: &str, area: Rect) {
         let block = Block::default()
             .title(" Error ")
             .borders(Borders::ALL)
@@ -471,9 +478,9 @@ impl TuiApp {
             return true;
         }
 
-        // If showing help, only Escape closes it
+        // If showing help, only Escape or ? closes it
         if self.state.show_help {
-            if key == "escape" {
+            if key == "escape" || key == "?" {
                 self.state.show_help = false;
             }
             return true;
@@ -482,7 +489,7 @@ impl TuiApp {
         match key {
             "q" | "Q" | "ctrl-c" => return false,
             "?" => {
-                self.state.toggle_help();
+                self.state.show_help = true;
             }
             "r" | "R" => {
                 self.refresh_current();

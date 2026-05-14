@@ -91,8 +91,8 @@ fn run_app<B: ratatui::backend::Backend>(
                     KeyCode::Right => "right".to_string(),
                     KeyCode::Enter => "enter".to_string(),
                     KeyCode::Esc => "escape".to_string(),
+                    KeyCode::Char(' ') => "space".to_string(),
                     KeyCode::Backspace => "backspace".to_string(),
-                    KeyCode::Char('?') => "?".to_string(),
                     _ => continue,
                 };
 
