@@ -376,7 +376,7 @@ impl TuiApp {
             let line = Line::from(vec![
                 Span::styled("Delete \"", warn),
                 Span::styled(name.clone(), warn),
-                Span::styled("\"? Press ^X again to confirm, any other key to cancel.", warn),
+                Span::styled("\"? Press ^D again to confirm, any other key to cancel.", warn),
             ]);
             f.render_widget(
                 Paragraph::new(line).block(Block::default().padding(Padding::horizontal(1))).style(bg),
@@ -635,8 +635,8 @@ impl TuiApp {
             Span::raw("pen in Finder   "),
             Span::styled("C", key),
             Span::raw("opy Identifier   "),
-            Span::styled("^X", key),
-            Span::raw(" delete   "),
+            Span::styled("^D", key),
+            Span::raw("elete   "),
             Span::styled("R", key),
             Span::raw("efresh   "),
             Span::styled("Q", key),
@@ -789,8 +789,8 @@ impl TuiApp {
             return true;
         }
 
-        // Any key other than ctrl-x cancels a pending deletion
-        if key != "ctrl-x" {
+        // Any key other than ctrl-d cancels a pending deletion
+        if key != "ctrl-d" {
             self.state.pending_delete = None;
         }
 
@@ -827,7 +827,7 @@ impl TuiApp {
             "o" | "O" => {
                 self.open_in_finder();
             }
-            "ctrl-x" => {
+            "ctrl-d" => {
                 if self.state.pending_delete.is_some() {
                     self.delete_selected();
                     self.state.pending_delete = None;

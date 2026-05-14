@@ -85,7 +85,7 @@ fn run_app<B: ratatui::backend::Backend>(
                         if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
                             match c {
                                 'c' | 'C' => "ctrl-c".to_string(),
-                                'x' | 'X' => "ctrl-x".to_string(),
+                                'd' | 'D' => "ctrl-d".to_string(),
                                 _ => continue,
                             }
                         } else {
