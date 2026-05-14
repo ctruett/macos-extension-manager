@@ -329,7 +329,8 @@ impl TuiApp {
 
         // Calculate visible area height (accounting for header)
         let header_height = 1;
-        let available_height = area.height.saturating_sub(header_height);
+        // Reserve 1 row for the selected item at the bottom
+        let available_height = area.height.saturating_sub(header_height).saturating_sub(1);
 
         // Calculate scroll offset based on selection
         let mut scroll_offset = self.state.scroll_offset;
