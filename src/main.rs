@@ -15,12 +15,19 @@ use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::EnvFilter::from_default_env()
-            .add_directive("system_extension_manager=info".parse()?))
-        .init();
+    // Log to a file so output doesn't corrupt the TUI display
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/system-extension-manager.log")
+        .ok();
+    if let Some(file) = log_file {
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer().with_writer(std::sync::Mutex::new(file)))
+            .with(tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("system_extension_manager=info".parse()?))
+            .init();
+    }
 
     info!("Starting System Extension Manager");
 

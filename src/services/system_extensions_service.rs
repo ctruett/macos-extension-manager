@@ -29,40 +29,18 @@ impl SystemExtensionsService {
     fn parse_extensions_output(output: &str) -> Vec<SystemExtension> {
         let mut extensions = Vec::new();
 
-        // Skip header lines and category headers
-        let mut in_extension = false;
-
         for line in output.lines() {
+            // Trim leading whitespace/tabs but preserve the first non-whitespace char
             let line = line.trim();
-            
-            // Skip empty lines
-            if line.is_empty() {
-                continue;
-            }
-            
-            // Skip category headers like "5 extension(s)" and "--- com.apple.system_extension.xxx"
-            if line.starts_with("---") || line.starts_with("There are") || line.starts_with("enabled") || line.starts_with("*") {
-                if line.starts_with("enabled") || line.starts_with("*") {
-                    // This is a data line
-                    if let Some(ext) = Self::parse_extension_line(line) {
-                        debug!("Found system extension: {}", ext.identifier);
-                        extensions.push(ext);
-                    }
-                }
-                continue;
-            }
-            
-            // Skip lines with instructions
-            if line.starts_with("Go to 'System Settings") {
+
+            // Data lines start with '*'; everything else is a header, category, or instruction
+            if !line.starts_with('*') {
                 continue;
             }
 
-            // Check if it's a data line (starts with * or is tab-separated)
-            if line.starts_with('*') || line.contains('\t') {
-                if let Some(ext) = Self::parse_extension_line(line) {
-                    debug!("Found system extension: {}", ext.identifier);
-                    extensions.push(ext);
-                }
+            if let Some(ext) = Self::parse_extension_line(line) {
+                debug!("Found system extension: {}", ext.identifier);
+                extensions.push(ext);
             }
         }
 

@@ -3,6 +3,7 @@
 use crate::error::AppError;
 use crate::models::{ItemType, LaunchAgent, LaunchDaemon, LoginItem, SystemExtension};
 
+
 /// Loading state for async operations
 #[derive(Debug, Clone)]
 #[derive(Default)]
@@ -36,7 +37,7 @@ pub enum SelectedSection {
 
 
 /// Application state
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct AppState {
     /// Current item type being viewed
     pub current_item_type: ItemType,
@@ -52,6 +53,13 @@ pub struct AppState {
     
     /// Search query
     pub search_query: String,
+    
+    /// Filter visibility - which item types are shown
+    /// True = show, False = hidden
+    pub show_login_items: bool,
+    pub show_launch_agents: bool,
+    pub show_launch_daemons: bool,
+    pub show_system_extensions: bool,
     
     /// Login items
     pub login_items: Vec<LoginItem>,
@@ -74,9 +82,48 @@ pub struct AppState {
     
     /// Show help overlay
     pub show_help: bool,
-    
+
+    /// Hide disabled/unloaded items
+    pub hide_disabled: bool,
+
+    /// Type groups whose disabled items are currently expanded
+    pub expanded_disabled: std::collections::HashSet<ItemType>,
+
+    /// Show system identifiers instead of display names
+    pub show_system_names: bool,
+
     /// Refresh tick for UI updates
     pub tick: u64,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            current_item_type: ItemType::LoginItem,
+            selected_section: SelectedSection::Content,
+            selected_index: 0,
+            scroll_offset: 0,
+            search_query: String::new(),
+            show_login_items: true,
+            show_launch_agents: true,
+            show_launch_daemons: true,
+            show_system_extensions: true,
+            login_items: Vec::new(),
+            login_items_loading: LoadingState::Idle,
+            launch_agents: Vec::new(),
+            launch_agents_loading: LoadingState::Idle,
+            launch_daemons: Vec::new(),
+            launch_daemons_loading: LoadingState::Idle,
+            system_extensions: Vec::new(),
+            system_extensions_loading: LoadingState::Idle,
+            error_message: None,
+            show_help: false,
+            hide_disabled: true,
+            expanded_disabled: std::collections::HashSet::new(),
+            show_system_names: true,
+            tick: 0,
+        }
+    }
 }
 
 impl AppState {
