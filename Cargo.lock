@@ -394,6 +394,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "macos-extman"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "clap",
+ "crossterm 0.28.1",
+ "plist",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -795,24 +813,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "system-extension-manager"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.21.7",
- "clap",
- "crossterm 0.28.1",
- "plist",
- "ratatui",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

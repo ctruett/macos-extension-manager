@@ -14,10 +14,13 @@ pub mod ui;
 pub mod utils;
 
 pub use error::{AppError, AppResult};
-pub use models::{ItemType, LaunchAgent, LaunchDaemon, LoginItem, SystemExtension};
+pub use models::{
+    BackgroundItem, ExtensionStatus, ExtensionType, ItemType, LaunchAgent, LaunchDaemon, LoginItem,
+    OpenAtLoginItem, SystemExtension,
+};
 pub use services::{
-    LaunchAgentsService, LaunchDaemonsService, LoginItemsService, PrivilegeService,
-    SystemExtensionsService,
+    BackgroundItemsService, LaunchAgentsService, LaunchDaemonsService, LoginItemsService,
+    OpenAtLoginService, PrivilegeService, SystemExtensionsService,
 };
 pub use state::{AppState, LoadingState};
 pub use ui::TuiApp;

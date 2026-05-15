@@ -4,16 +4,13 @@ use crate::error::AppResult;
 use crate::models::LaunchAgent;
 use crate::utils::plist_parser::PlistParser;
 use crate::utils::shell::ShellExecutor;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
 /// Service for managing launch agents
 pub struct LaunchAgentsService;
 
 impl LaunchAgentsService {
-    /// Path to user launch agents directory
-    const AGENTS_PATH: &'static str = "~/Library/LaunchAgents";
-
     /// Path to system launch agents directory
     const SYSTEM_AGENTS_PATH: &'static str = "/Library/LaunchAgents";
 
@@ -70,7 +67,7 @@ impl LaunchAgentsService {
 
     /// Parse a launch agent from a plist file
     fn parse_agent(
-        path: &PathBuf,
+        path: &Path,
         loaded_agents: &std::collections::HashMap<String, (i32, Option<u32>)>,
     ) -> AppResult<LaunchAgent> {
         let dict = PlistParser::read(path)?;

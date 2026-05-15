@@ -4,7 +4,7 @@ use crate::error::AppResult;
 use crate::models::LoginItem;
 use crate::utils::shell::ShellExecutor;
 use crate::utils::plist_parser::PlistParser;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
 /// Service for managing login items
@@ -73,7 +73,7 @@ impl LoginItemsService {
 
     /// Parse a login item from a plist file
     fn parse_login_item(
-        path: &PathBuf,
+        path: &Path,
         loaded_labels: &std::collections::HashSet<String>,
     ) -> AppResult<LoginItem> {
         let dict = PlistParser::read(path)?;
@@ -109,7 +109,7 @@ impl LoginItemsService {
             path: program,
             enabled: loaded,
             hidden: false,
-            plist_path: Some(path.clone()),
+            plist_path: Some(path.to_path_buf()),
         })
     }
 

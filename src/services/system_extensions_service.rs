@@ -48,7 +48,7 @@ impl SystemExtensionsService {
     }
 
     /// Parse a single line of systemextensionsctl output
-    /// Format: *	*	teamID	bundleID (version)	name	[state]
+    /// Format: teamID bundleID (version) name [state]
     fn parse_extension_line(line: &str) -> Option<SystemExtension> {
         let line = line.trim();
         if line.is_empty() {

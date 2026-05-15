@@ -109,45 +109,8 @@ impl ShellExecutor {
     }
 
     /// Execute a launchctl command with admin privileges
+    #[allow(dead_code)]
     pub fn launchctl_admin(action: &str, plist_path: &str) -> AppResult<CommandResult> {
-        let _full_cmd = format!("launchctl {} {}", action, plist_path);
         Self::execute_admin("launchctl", &[action, plist_path])
-    }
-}
-
-/// Parse launchctl list output
-pub fn parse_launchctl_list(output: &str) -> Vec<(String, i32, Option<u32>)> {
-    let mut items = Vec::new();
-
-    for line in output.lines().skip(1) {
-        // Skip header line
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 3 {
-            let label = parts[0].trim_matches('"').to_string();
-            let status = parts[1].parse::<i32>().unwrap_or(-1);
-            let pid = if parts[2] == "-" {
-                None
-            } else {
-                parts[2].parse::<u32>().ok()
-            };
-            items.push((label, status, pid));
-        }
-    }
-
-    items
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_launchctl_list() {
-        let output = "Label                          Status          PID\n\"com.apple.Safari\"             0               1234\n\"com.apple.mail\"              -               -\n";
-        let items = parse_launchctl_list(output);
-        assert_eq!(items.len(), 2);
-        assert_eq!(items[0].0, "com.apple.Safari");
-        assert_eq!(items[0].2, Some(1234));
-        assert_eq!(items[1].2, None);
     }
 }

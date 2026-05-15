@@ -36,6 +36,7 @@ impl HelpView {
             Row::new(vec!["r", "Refresh current list"]),
             Row::new(vec!["/", "Focus search"]),
             Row::new(vec!["Esc", "Clear search / Go back"]),
+            Row::new(vec!["y", "Copy Identifier"]),
             Row::new(vec!["q", "Quit application"]),
             Row::new(vec!["?", "Show / hide this help"]),
         ];

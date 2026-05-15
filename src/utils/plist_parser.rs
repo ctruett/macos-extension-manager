@@ -86,27 +86,13 @@ impl PlistParser {
             plist::Value::Integer(i) => format!("\n    <integer>{}</integer>", i),
             plist::Value::Real(r) => format!("\n    <real>{}</real>", r),
             plist::Value::Array(arr) => {
-                let mut xml = "\n    <array>".to_string();
-                for item in arr {
-                    xml.push_str(&Self::value_to_xml(item).replace("\n    ", "\n        "));
-                }
-                xml.push_str("\n    </array>");
-                xml
+                Self::array_to_xml(arr)
             }
             plist::Value::Dictionary(dict) => {
-                let mut xml = "\n    <dict>".to_string();
-                for (key, val) in dict {
-                    xml.push_str(&format!("\n        <key>{}</key>", Self::escape_xml(key)));
-                    xml.push_str(&Self::value_to_xml(val).replace("\n    ", "\n        "));
-                }
-                xml.push_str("\n    </dict>");
-                xml
+                Self::dict_to_xml_inner(dict)
             }
             plist::Value::Date(date) => {
-                use std::fmt::Write as FmtWrite;
-                let mut s = String::new();
-                let _ = write!(s, "\n    <date>{:?}</date>", date);
-                s
+                format!("\n    <date>{:?}</date>", date)
             }
             plist::Value::Data(data) => {
                 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -116,7 +102,34 @@ impl PlistParser {
             _ => "\n    <string></string>".to_string(),
         }
     }
-    
+
+    fn array_to_xml(arr: &[plist::Value]) -> String {
+        let mut xml = "\n    <array>".to_string();
+        for item in arr {
+            xml.push_str(&Self::indent_xml(&Self::value_to_xml(item), 8));
+        }
+        xml.push_str("\n    </array>");
+        xml
+    }
+
+    fn dict_to_xml_inner(dict: &plist::Dictionary) -> String {
+        let mut xml = "\n    <dict>".to_string();
+        for (key, val) in dict {
+            xml.push_str(&format!("\n        <key>{}</key>", Self::escape_xml(key)));
+            xml.push_str(&Self::indent_xml(&Self::value_to_xml(val), 8));
+        }
+        xml.push_str("\n    </dict>");
+        xml
+    }
+
+    fn indent_xml(s: &str, indent: usize) -> String {
+        let prefix = " ".repeat(indent / 4);
+        s.lines()
+            .map(|line| format!("{}{}", prefix, line))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// Escape special XML characters
     fn escape_xml(s: &str) -> String {
         s.replace('&', "&amp;")

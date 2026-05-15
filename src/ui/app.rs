@@ -1,6 +1,5 @@
 //! Main TUI application
 
-use crate::error::AppError;
 use crate::models::ItemType;
 use crate::services::{
     BackgroundItemsService, LaunchAgentsService, LaunchDaemonsService, LoginItemsService,
@@ -8,7 +7,7 @@ use crate::services::{
 };
 use crate::state::{AppState, LoadingState, SelectedSection, ScopeFilter};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Margin, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Cell, Clear, Padding, Paragraph, Row, Table, Wrap},
@@ -680,8 +679,9 @@ impl TuiApp {
             Span::raw("isable   "),
             Span::styled("O", key),
             Span::raw("pen Location   "),
-            Span::styled("C", key),
-            Span::raw("opy Identifier   "),
+            Span::raw("Cop"),
+            Span::styled("y", key),
+            Span::raw(" Identifier   "),
             Span::styled("^D", key),
             Span::raw("elete   "),
             Span::styled("R", key),
@@ -728,6 +728,7 @@ impl TuiApp {
             Line::from(vec![Span::styled("/", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("        Focus search input")]),
             Line::from(vec![Span::styled("Esc", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("      Clear search / close dialogs")]),
             Line::from(vec![Span::styled("r", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("        Refresh all items")]),
+            Line::from(vec![Span::raw("    "), Span::styled("y", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("  Copy Identifier")]),
             Line::from(vec![Span::raw("")]),
             Line::from(vec![Span::styled("q", Style::default().fg(Color::Rgb(220, 70, 70)).add_modifier(ratatui::style::Modifier::BOLD)), Span::raw("        Exit application")]),
             Line::from(vec![Span::raw("")]),
@@ -747,7 +748,7 @@ impl TuiApp {
         // inner width inside borders + horizontal padding (1 each side)
         let inner_width = popup_width.saturating_sub(4) as usize;
         // estimate wrapped line count for the error text
-        let error_lines = ((error.len() + inner_width - 1) / inner_width).max(1) as u16;
+        let error_lines = error.len().div_ceil(inner_width).max(1) as u16;
         // borders(2) + v-padding(2) + error + blank + dismiss
         let popup_height = (2 + 2 + error_lines + 1 + 1).min(area.height);
 
@@ -859,7 +860,7 @@ impl TuiApp {
             "d" | "D" => {
                 self.set_selected_state(false);
             }
-            "c" | "C" => {
+            "y" | "Y" => {
                 self.copy_identifier();
             }
             "s" | "S" => {
@@ -925,7 +926,7 @@ impl TuiApp {
             ItemType::BackgroundItem => {
                 self.state.background_items.iter()
                     .find(|b| b.identifier == item.identifier)
-                    .map(|b| BackgroundItemsService::delete(b))
+                    .map(BackgroundItemsService::delete)
             }
             ItemType::OpenAtLogin => {
                 Some(OpenAtLoginService::remove(&item.identifier))
@@ -1059,7 +1060,6 @@ impl TuiApp {
                     if let Some(plist) = &bg.plist_path {
                         if plist.exists() {
                             let _ = Command::new("open").args(["-R", &plist.to_string_lossy()]).spawn();
-                            return;
                         }
                     }
                 }

@@ -4,7 +4,7 @@ use crate::error::AppResult;
 use crate::models::LaunchDaemon;
 use crate::utils::plist_parser::PlistParser;
 use crate::utils::shell::ShellExecutor;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 /// Service for managing launch daemons (requires admin privileges)
@@ -43,7 +43,7 @@ impl LaunchDaemonsService {
 
     /// Parse a daemon from a plist
     fn parse_daemon(
-        path: &PathBuf,
+        path: &Path,
         loaded_daemons: &std::collections::HashMap<String, (i32, Option<u32>)>,
     ) -> AppResult<LaunchDaemon> {
         let dict = PlistParser::read(path)?;
@@ -85,7 +85,7 @@ impl LaunchDaemonsService {
 
         Ok(LaunchDaemon {
             label,
-            plist_path: path.clone(),
+            plist_path: path.to_path_buf(),
             program,
             program_arguments,
             run_at_load,
