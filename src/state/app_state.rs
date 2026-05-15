@@ -84,6 +84,9 @@ pub struct AppState {
     pub refreshing: bool,
 
     pub tick: u64,
+
+    /// Active flash ticks when a row is being copied (0 = inactive)
+    pub copy_flash_ticks: u8,
 }
 
 impl Default for AppState {
@@ -117,6 +120,7 @@ impl Default for AppState {
             pending_delete: None,
             refreshing: false,
             tick: 0,
+            copy_flash_ticks: 0,
         }
     }
 }

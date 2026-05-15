@@ -67,6 +67,11 @@ fn run_app<B: ratatui::backend::Backend>(
     app: &mut TuiApp,
 ) -> Result<(), AppError> {
     loop {
+        // Advance copy flash animation each frame
+        if app.state.copy_flash_ticks > 0 {
+            app.state.copy_flash_ticks -= 1;
+        }
+
         // Draw the UI
         terminal.draw(|f| {
             app.render(f);

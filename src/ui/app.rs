@@ -604,7 +604,12 @@ impl TuiApp {
             };
 
             if is_selected {
-                let sel = Style::default().bg(Color::Rgb(40, 80, 160)).fg(Color::Rgb(215, 215, 215));
+                let flash = self.state.copy_flash_ticks;
+                let sel = if flash > 0 && flash % 2 == 0 {
+                    Style::default().bg(Color::Rgb(0, 0, 0)).fg(Color::Rgb(215, 215, 215))
+                } else {
+                    Style::default().bg(Color::Rgb(40, 80, 160)).fg(Color::Rgb(215, 215, 215))
+                };
                 Row::new(vec![
                     Cell::from(type_str).style(sel),
                     Cell::from(item.name.as_str()).style(sel),
@@ -863,6 +868,7 @@ impl TuiApp {
                 self.set_selected_state(false);
             }
             "y" | "Y" => {
+                self.state.copy_flash_ticks = 5;
                 self.copy_identifier();
             }
             "s" | "S" => {
