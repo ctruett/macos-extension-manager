@@ -38,6 +38,19 @@ impl ItemType {
             ItemType::BackgroundItem => "◈",
         }
     }
+
+    /// Return a distinct RGB color for this type.
+    /// Colors are chosen with similar saturation/lightness so they feel cohesive.
+    pub fn rgb_color(&self) -> (u8, u8, u8) {
+        match self {
+            ItemType::LoginItem => (230, 170, 60),     // amber/gold
+            ItemType::OpenAtLogin => (230, 130, 70),   // orange
+            ItemType::LaunchAgent => (70, 210, 100),    // green
+            ItemType::LaunchDaemon => (70, 150, 230),   // blue
+            ItemType::SystemExtension => (180, 70, 230), // purple
+            ItemType::BackgroundItem => (70, 220, 200),  // teal/cyan
+        }
+    }
 }
 
 impl std::fmt::Display for ItemType {

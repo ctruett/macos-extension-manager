@@ -612,11 +612,13 @@ impl TuiApp {
                     Cell::from(item.scope).style(sel),
                 ])
             } else if item.is_enabled {
+                let (tr, tg, tb) = item.item_type.rgb_color();
+                let type_style = Style::default().fg(Color::Rgb(tr, tg, tb));
                 let text = Style::default().fg(Color::Rgb(215, 215, 215));
                 let status_style = Style::default().fg(Color::Rgb(72, 199, 142));
                 let scope_style = Style::default().fg(Color::Rgb(130, 160, 200));
                 Row::new(vec![
-                    Cell::from(type_str).style(text),
+                    Cell::from(type_str).style(type_style),
                     Cell::from(item.name.as_str()).style(text),
                     Cell::from(item.status.as_str()).style(status_style),
                     Cell::from(item.scope).style(scope_style),
